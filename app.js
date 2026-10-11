@@ -292,6 +292,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     searchResults: [],
     queue: [],
     queueIndex: -1,
+    queueHistory: [],
     currentTrack: null,
     currentTrackContext: null,
     currentTrackIndexInContext: -1,
@@ -2280,9 +2281,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         state.queue.unshift(track);
         state.queueIndex = 0;
       }
+      state.queueHistory = [state.queueIndex];
     } else if (!state.queue.some(t => isSameTrack(t, track))) {
       state.queue.push(track);
       state.queueIndex = state.queue.length - 1;
+      state.queueHistory = [state.queueIndex];
     }
     updateQueueBadge();
 
@@ -3195,11 +3198,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
+  function recordPlayedIndex(idx) {
+    if (typeof idx !== 'number' || idx < 0) return;
+    const h = state.queueHistory;
+    if (h[h.length - 1] !== idx) h.push(idx);
+    if (h.length > 200) h.shift();
+  }
+
   function playNext() {
     if (state.queue.length === 0) return;
     if (state.isShuffle) {
       const nextIdx = Math.floor(Math.random() * state.queue.length);
       state.queueIndex = nextIdx;
+      recordPlayedIndex(nextIdx);
       playTrack(state.queue[nextIdx]);
       return;
     }
@@ -3217,6 +3228,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       nextIdx = 0;
     }
     state.queueIndex = nextIdx;
+    recordPlayedIndex(nextIdx);
     playTrack(state.queue[nextIdx]);
 
     if (state.myWaveActive && state.queueIndex >= state.queue.length - 3 && typeof extendMyWaveQueue === 'function') {
@@ -3230,9 +3242,23 @@ document.addEventListener('DOMContentLoaded', async () => {
       return;
     }
     if (state.queue.length === 0) return;
+
+    const h = state.queueHistory;
+    if (h.length > 1) {
+      h.pop();
+      const prevIdx = h[h.length - 1];
+      if (prevIdx >= 0 && prevIdx < state.queue.length) {
+        state.queueIndex = prevIdx;
+        playTrack(state.queue[prevIdx]);
+        return;
+      }
+      h.push(state.queueIndex);
+    }
+
     let prevIdx = state.queueIndex - 1;
     if (prevIdx < 0) prevIdx = state.queue.length - 1;
     state.queueIndex = prevIdx;
+    state.queueHistory = [prevIdx];
     playTrack(state.queue[prevIdx]);
   }
 
@@ -5300,6 +5326,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     el.btnClearQueue.addEventListener('click', () => {
       state.queue = [];
       state.queueIndex = -1;
+      state.queueHistory = [];
       updateQueueBadge();
       renderQueueView();
     });
