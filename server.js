@@ -1457,6 +1457,63 @@ async function handleSaveCustomLyrics(req, res, title, artist) {
   });
 }
 
+const SPOTIFY_PATHFINDER_URL = 'https://api-partner.spotify.com/pathfinder/v1/query';
+const SPOTIFY_FETCH_PLAYLIST_HASH = '8964e8eafb21aa992a7d951d256d83285c04be2105d209262901de70cb97584a';
+
+function pathfinderRequest(accessToken, variables) {
+  return new Promise((resolve, reject) => {
+    const payload = JSON.stringify({
+      variables,
+      operationName: 'fetchPlaylist',
+      extensions: { persistedQuery: { version: 1, sha256Hash: SPOTIFY_FETCH_PLAYLIST_HASH } }
+    });
+    const req = https.request(SPOTIFY_PATHFINDER_URL, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      },
+      timeout: 15000
+    }, (r) => {
+      let b = '';
+      r.on('data', c => b += c);
+      r.on('end', () => {
+        try { resolve(JSON.parse(b)); } catch (e) { reject(new Error('Invalid pathfinder response')); }
+      });
+    });
+    req.on('error', reject);
+    req.on('timeout', () => { req.destroy(); reject(new Error('Pathfinder request timed out')); });
+    req.write(payload);
+    req.end();
+  });
+}
+
+async function fetchFullSpotifyPlaylist(playlistId, accessToken) {
+  const uri = `spotify:playlist:${playlistId}`;
+  const first = await pathfinderRequest(accessToken, { uri, offset: 0, limit: 100, enableWatchFeedEntrypoint: true });
+  const content = first?.data?.playlistV2?.content;
+  if (!content || !Array.isArray(content.items)) return null;
+  const total = content.totalCount || content.items.length;
+  const items = content.items.slice();
+  let offset = items.length;
+  let guard = 0;
+  while (offset < total && guard++ < 100) {
+    const page = await pathfinderRequest(accessToken, { uri, offset, limit: 100, enableWatchFeedEntrypoint: true });
+    const pageItems = page?.data?.playlistV2?.content?.items;
+    if (!Array.isArray(pageItems) || pageItems.length === 0) break;
+    items.push(...pageItems);
+    offset += pageItems.length;
+  }
+  const tracks = items.map(it => {
+    const t = it?.itemV2?.data || it?.item?.data || {};
+    const artists = (t.albumOfTrack?.artists?.items || []).map(a => a.profile?.name).filter(Boolean);
+    return { title: t.name || '', artist: artists.join(', ') };
+  }).filter(t => t.title);
+  return { tracks, total };
+}
+
 function handleSpotifyImport(req, res, inputUrl) {
   const m = (inputUrl || '').match(/playlist[/:]([a-zA-Z0-9]+)/);
   if (!m) {
@@ -1475,7 +1532,7 @@ function handleSpotifyImport(req, res, inputUrl) {
   const getReq = https.get(embedUrl, options, (getRes) => {
     let body = '';
     getRes.on('data', chunk => body += chunk);
-    getRes.on('end', () => {
+    getRes.on('end', async () => {
       try {
         const nextDataMatch = body.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
         if (!nextDataMatch) {
@@ -1489,11 +1546,21 @@ function handleSpotifyImport(req, res, inputUrl) {
           return res.end(JSON.stringify({ success: false, error: 'Spotify entity not found' }));
         }
         const name = entity.name || 'Spotify Playlist';
-        const rawTracks = Array.isArray(entity.trackList) ? entity.trackList : [];
-        const tracks = rawTracks.slice(0, 100).map(t => ({
-          title: t.title || '',
-          artist: t.subtitle || ''
-        }));
+        let tracks = null;
+        const accessToken = data?.props?.pageProps?.state?.settings?.session?.accessToken;
+        if (accessToken) {
+          try {
+            const full = await fetchFullSpotifyPlaylist(playlistId, accessToken);
+            if (full && full.tracks.length) tracks = full.tracks;
+          } catch (e) {}
+        }
+        if (!tracks) {
+          const rawTracks = Array.isArray(entity.trackList) ? entity.trackList : [];
+          tracks = rawTracks.slice(0, 100).map(t => ({
+            title: t.title || '',
+            artist: t.subtitle || ''
+          }));
+        }
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ success: true, name, tracks }));
       } catch (err) {
