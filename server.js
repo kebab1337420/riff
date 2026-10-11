@@ -1023,6 +1023,18 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
     return res.end(JSON.stringify(data));
   }
 
+  const downloadedName = await findDownloadedFile(title, artist);
+  if (downloadedName) {
+    const data = {
+      success: true,
+      isLocal: true,
+      isDownload: true,
+      streamUrl: `http://127.0.0.1:${PORT}/api/downloaded-track?name=${encodeURIComponent(downloadedName)}`
+    };
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify(data));
+  }
+
   if (streamUrlCache.has(cleanId)) {
     const cached = streamUrlCache.get(cleanId);
     if (Date.now() - cached.timestamp < 7200000) {
@@ -1289,6 +1301,53 @@ async function handleLibraryFile(req, res, trackId) {
   }
 }
 
+async function handleDownloadedTrack(req, res, name) {
+  const safeName = path.basename(String(name || ''));
+  const ext = path.extname(safeName).toLowerCase();
+  const dir = getDownloadsDir();
+  const filePath = path.join(dir, safeName);
+
+  if (!safeName || !AUDIO_EXTENSIONS.has(ext) || path.dirname(filePath) !== dir) {
+    res.writeHead(404);
+    return res.end('File not found in downloads');
+  }
+
+  try {
+    const stat = await fs.promises.stat(filePath);
+    const fileSize = stat.size;
+    const range = req.headers.range;
+
+    const contentType = LIBRARY_MIME_TYPES[ext] || 'audio/mpeg';
+
+    if (range) {
+      const parts = range.replace(/bytes=/, "").split("-");
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+      const chunksize = (end - start) + 1;
+      const file = fs.createReadStream(filePath, { start, end });
+      const head = {
+        'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+        'Accept-Ranges': 'bytes',
+        'Content-Length': chunksize,
+        'Content-Type': contentType,
+      };
+      res.writeHead(206, head);
+      file.pipe(res);
+    } else {
+      const head = {
+        'Content-Length': fileSize,
+        'Content-Type': contentType,
+        'Accept-Ranges': 'bytes'
+      };
+      res.writeHead(200, head);
+      fs.createReadStream(filePath).pipe(res);
+    }
+  } catch (e) {
+    res.writeHead(404);
+    res.end('File not found in downloads');
+  }
+}
+
 function isPrivateHost(hostname) {
   const host = (hostname || '').toLowerCase().replace(/^\[|\]$/g, '');
   if (!host) return true;
@@ -1369,6 +1428,39 @@ function sanitizeFilename(str) {
   .trim();
 }
 
+const AUDIO_EXTENSIONS = new Set(['.mp3', '.m4a', '.flac', '.opus', '.wav', '.ogg', '.oga', '.aac', '.webm', '.weba']);
+
+let downloadsIndex = null;
+let downloadsIndexBuiltAt = 0;
+const DOWNLOADS_INDEX_TTL = 15000;
+
+async function buildDownloadsIndex() {
+  const dir = getDownloadsDir();
+  const map = new Map();
+  try {
+    const entries = await fs.promises.readdir(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isFile()) continue;
+      const ext = path.extname(entry.name).toLowerCase();
+      if (!AUDIO_EXTENSIONS.has(ext)) continue;
+      const base = entry.name.slice(0, entry.name.length - ext.length).toLowerCase();
+      if (base) map.set(base, entry.name);
+    }
+  } catch (e) {}
+  downloadsIndex = map;
+  downloadsIndexBuiltAt = Date.now();
+  return map;
+}
+
+async function findDownloadedFile(title, artist) {
+  if (!title && !artist) return null;
+  if (!downloadsIndex || Date.now() - downloadsIndexBuiltAt > DOWNLOADS_INDEX_TTL) {
+    await buildDownloadsIndex();
+  }
+  const key = `${sanitizeFilename(artist || 'unknown artist')} - ${sanitizeFilename(title || 'untitled')}`.toLowerCase();
+  return downloadsIndex.get(key) || null;
+}
+
 async function handleDownload(req, res, trackUrl, title, artist, format = 'mp3', quality = '0') {
   if (!trackUrl && (!title || !artist)) {
     res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -1405,6 +1497,7 @@ async function handleDownload(req, res, trackUrl, title, artist, format = 'mp3',
 
   try {
     await executeYtDlp(args, 60000);
+    downloadsIndex = null;
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
       success: true,
@@ -1425,6 +1518,7 @@ async function handleDownload(req, res, trackUrl, title, artist, format = 'mp3',
         targetUrl
       ];
       await executeYtDlp(fallbackArgs, 60000);
+      downloadsIndex = null;
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({
         success: true,
@@ -1972,6 +2066,11 @@ const server = http.createServer(async (req, res) => {
   if (parsedUrl.pathname === '/api/local-track') {
     const trackId = parsedUrl.query.id || '';
     return handleLocalTrack(req, res, trackId);
+  }
+
+  if (parsedUrl.pathname === '/api/downloaded-track') {
+    const name = parsedUrl.query.name || '';
+    return handleDownloadedTrack(req, res, name);
   }
 
   if (parsedUrl.pathname === '/api/library-add' && req.method === 'POST') {
