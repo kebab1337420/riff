@@ -3136,6 +3136,11 @@ body.is-window-resizing .platform-switch-container {
   margin: 0;
 }
 
+#download-modal.batch-mode #download-trim-section,
+#download-modal.batch-mode #download-effects-section {
+  display: none;
+}
+
 .download-track-preview {
   display: flex;
   align-items: center;

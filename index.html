@@ -1915,7 +1915,7 @@
   <div class="modal-backdrop hidden" id="download-modal">
     <div class="modal-card download-modal-card">
       <div class="modal-header">
-        <h3 class="modal-title">Download track</h3>
+        <h3 class="modal-title" id="download-modal-title">Download track</h3>
         <button class="btn-icon-pill" id="btn-close-download-modal" title="Close">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
         </button>
@@ -1978,7 +1978,7 @@
         </div>
       </div>
 
-      <div class="download-section">
+      <div class="download-section" id="download-trim-section">
         <span class="download-section-label">Trim audio</span>
         <div class="trim-inputs">
           <input type="text" id="trim-start" class="pill-text-input" placeholder="0:00" value="0:00">
@@ -1987,7 +1987,7 @@
         </div>
       </div>
 
-      <div class="download-section download-effects-section">
+      <div class="download-section download-effects-section" id="download-effects-section">
         <div class="effects-toggle-row">
           <label class="effects-toggle-label" for="download-apply-effects">Apply current audio effects (Preset/High Quality)</label>
           <input type="checkbox" id="download-apply-effects" class="m3-switch-input">
