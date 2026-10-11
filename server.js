@@ -2088,6 +2088,10 @@ const server = http.createServer(async (req, res) => {
 });
 
 function startServer(port = PORT) {
+  if (server.listening) {
+    const address = server.address();
+    return Promise.resolve(address && typeof address === 'object' ? address.port : port);
+  }
   return new Promise((resolve, reject) => {
     server.listen(port, '127.0.0.1', () => {
       console.log(`devsize internal server running on http://127.0.0.1:${port}`);
