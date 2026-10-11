@@ -1167,6 +1167,26 @@ async function handleLibraryFile(req, res, trackId) {
   }
 }
 
+function isPrivateHost(hostname) {
+  const host = (hostname || '').toLowerCase().replace(/^\[|\]$/g, '');
+  if (!host) return true;
+  if (host === 'localhost' || host === '::1' || host === '0.0.0.0') return true;
+  if (host.endsWith('.localhost') || host.endsWith('.local') || host.endsWith('.internal')) return true;
+  const m = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (m) {
+    const a = Number(m[1]);
+    const b = Number(m[2]);
+    if (a === 0 || a === 10 || a === 127) return true;
+    if (a === 169 && b === 254) return true;
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 192 && b === 168) return true;
+    if (a === 100 && b >= 64 && b <= 127) return true;
+    return false;
+  }
+  if (host.includes(':')) return true;
+  return false;
+}
+
 function handleAudioProxy(req, res, targetUrl) {
   if (!targetUrl) {
     res.writeHead(400);
@@ -1175,6 +1195,14 @@ function handleAudioProxy(req, res, targetUrl) {
 
   try {
     const parsed = new URL(targetUrl);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      res.writeHead(400);
+      return res.end('Unsupported protocol');
+    }
+    if (isPrivateHost(parsed.hostname)) {
+      res.writeHead(403);
+      return res.end('Blocked target');
+    }
     const client = parsed.protocol === 'https:' ? https : http;
 
     const headers = { ...req.headers, host: parsed.host };
@@ -1657,6 +1685,27 @@ const server = http.createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Headers', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+
+  const requestOrigin = req.headers.origin;
+  if (requestOrigin && requestOrigin !== 'null') {
+    let originAllowed = false;
+    try {
+      const originUrl = new URL(requestOrigin);
+      originAllowed = originUrl.protocol === 'file:' || originUrl.hostname === '127.0.0.1' || originUrl.hostname === 'localhost' || originUrl.hostname === '::1';
+    } catch (e) {
+      originAllowed = false;
+    }
+    if (!originAllowed) {
+      res.writeHead(403, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ success: false, error: 'forbidden' }));
+    }
+  }
+
+  const hostName = (req.headers.host || '').replace(/:\d+$/, '').replace(/^\[|\]$/g, '');
+  if (hostName && hostName !== '127.0.0.1' && hostName !== 'localhost' && hostName !== '::1') {
+    res.writeHead(403, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({ success: false, error: 'forbidden' }));
+  }
 
   if (req.method === 'OPTIONS') {
     res.writeHead(204);

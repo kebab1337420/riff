@@ -2,6 +2,15 @@
 document.addEventListener('DOMContentLoaded', async () => {
   try { localStorage.removeItem('riff_stats'); } catch (e) {}
 
+  function escapeHtml(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
   const LiquidMotion = {
     setAnchor(element, triggerEl, axis = 'x') {
       if (!element) return;
@@ -127,7 +136,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     toast.innerHTML = `
       <span class="toast-icon">${iconSvg}</span>
-      <span class="toast-text">${cleanMessage}</span>
+      <span class="toast-text">${escapeHtml(cleanMessage)}</span>
     `;
 
     container.appendChild(toast);
@@ -3329,7 +3338,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       chip.dataset.presetId = p.id;
 
       chip.innerHTML = `
-      <span class="preset-name-label">${p.name}</span>
+      <span class="preset-name-label">${escapeHtml(p.name)}</span>
       ${isCustom ? `
         <div class="preset-actions">
           <button type="button" class="preset-btn-action btn-rename-p" title="Rename" aria-label="Rename preset">
@@ -3536,10 +3545,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       row.innerHTML = `
       <span class="track-row-index">${idx + 1}</span>
-      <img class="track-row-thumb" src="${rowThumb || ''}" alt="" onerror="this.style.visibility='hidden'">
+      <img class="track-row-thumb" src="${escapeHtml(rowThumb || '')}" alt="" onerror="this.style.visibility='hidden'">
       <div class="track-row-info">
-      <span class="track-row-title">${(track.title || 'untitled')}</span>
-      <span class="track-row-artist" title="view artist profile">${(track.artist || 'unknown artist')}</span>
+      <span class="track-row-title">${escapeHtml(track.title || 'untitled')}</span>
+      <span class="track-row-artist" title="view artist profile">${escapeHtml(track.artist || 'unknown artist')}</span>
       </div>
       <span class="track-row-duration">${formatDuration(track.duration)}</span>
       <div class="track-row-actions">
@@ -4112,7 +4121,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       infoEl.className = 'playlist-item-info';
       const trackCount = (pl.tracks || []).length;
       infoEl.innerHTML = `
-        <span class="playlist-item-name">${(pl.name || 'untitled')}</span>
+        <span class="playlist-item-name">${escapeHtml(pl.name || 'untitled')}</span>
         <span class="playlist-item-count">${trackCount} track${trackCount === 1 ? '' : 's'}</span>
       `;
 
@@ -6985,10 +6994,10 @@ document.addEventListener('DOMContentLoaded', async () => {
           pill.className = 'quick-play-pill';
           pill.style.animationDelay = (idx * 60) + 'ms';
           pill.innerHTML = `
-          <img class="quick-play-pill-img" src="${t.thumbnail || ''}" alt="" onerror="this.style.visibility='hidden'">
+          <img class="quick-play-pill-img" src="${escapeHtml(t.thumbnail || '')}" alt="" onerror="this.style.visibility='hidden'">
           <div class="quick-play-pill-text">
-          <span class="quick-play-pill-title">${(t.title || 'untitled')}</span>
-          <span class="quick-play-pill-artist">${(t.artist || '')}</span>
+          <span class="quick-play-pill-title">${escapeHtml(t.title || 'untitled')}</span>
+          <span class="quick-play-pill-artist">${escapeHtml(t.artist || '')}</span>
           </div>
           `;
           pill.addEventListener('click', () => {
@@ -7083,14 +7092,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             card.dataset.index = String(idx);
             card.innerHTML = `
               <div class="my-wave-track-cover-wrap">
-                <img class="my-wave-track-cover" src="${track.thumbnail || ''}" alt="" onerror="this.src='data:image/svg+xml;utf8,<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'280\\' height=\\'280\\' fill=\\'%23555\\'><rect width=\\'100%\\' height=\\'100%\\'/></svg>'">
+                <img class="my-wave-track-cover" src="${escapeHtml(track.thumbnail || '')}" alt="" onerror="this.src='data:image/svg+xml;utf8,<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'280\\' height=\\'280\\' fill=\\'%23555\\'><rect width=\\'100%\\' height=\\'100%\\'/></svg>'">
                 <div class="my-wave-track-play-overlay">
                   <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
                 </div>
               </div>
               <div class="my-wave-track-meta">
-                <span class="my-wave-track-title">${track.title || 'Untitled'}</span>
-                <span class="my-wave-track-artist">${track.artist || 'Unknown'}</span>
+                <span class="my-wave-track-title">${escapeHtml(track.title || 'Untitled')}</span>
+                <span class="my-wave-track-artist">${escapeHtml(track.artist || 'Unknown')}</span>
               </div>
             `;
 
@@ -7113,8 +7122,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
           if (focusedMeta && myWaveCurrentTracks[0]) {
             focusedMeta.innerHTML = `
-              <div class="my-wave-focused-title" id="my-wave-focused-title">${myWaveCurrentTracks[0].title || 'Untitled'}</div>
-              <div class="my-wave-focused-artist" id="my-wave-focused-artist">${myWaveCurrentTracks[0].artist || 'Unknown'}</div>
+              <div class="my-wave-focused-title" id="my-wave-focused-title">${escapeHtml(myWaveCurrentTracks[0].title || 'Untitled')}</div>
+              <div class="my-wave-focused-artist" id="my-wave-focused-artist">${escapeHtml(myWaveCurrentTracks[0].artist || 'Unknown')}</div>
             `;
             updateAmbientLight(myWaveCurrentTracks[0].thumbnail);
           }

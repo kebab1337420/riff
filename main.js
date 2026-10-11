@@ -305,15 +305,21 @@ function runGUI() {
 
         let audioSize = 0;
         const tracksDir = require('./platform').CACHE_DIR;
+        const thumbnailsDir = require('./platform').THUMBNAILS_DIR;
+        const audioExtRegex = /\.(opus|webm|m4a|mp3)$/i;
         try {
           if (fs.existsSync(tracksDir)) {
-            const files = fs.readdirSync(tracksDir);
-            for (const file of files) {
-              if (file.includes('.temp.')) {
-                try {
-                  audioSize += fs.statSync(path.join(tracksDir, file)).size;
-                } catch(e) {}
+            for (const file of fs.readdirSync(tracksDir)) {
+              if (audioExtRegex.test(file)) {
+                try { audioSize += fs.statSync(path.join(tracksDir, file)).size; } catch(e) {}
               }
+            }
+          }
+        } catch(e) {}
+        try {
+          if (fs.existsSync(thumbnailsDir)) {
+            for (const file of fs.readdirSync(thumbnailsDir)) {
+              try { audioSize += fs.statSync(path.join(thumbnailsDir, file)).size; } catch(e) {}
             }
           }
         } catch(e) {}
@@ -331,13 +337,21 @@ function runGUI() {
         try { await session.defaultSession.clearStorageData({ storages: ['serviceworkers', 'cachestorage'] }); } catch(e) {}
 
         const tracksDir = require('./platform').CACHE_DIR;
+        const thumbnailsDir = require('./platform').THUMBNAILS_DIR;
+        const audioExtRegex = /\.(opus|webm|m4a|mp3)$/i;
         try {
           if (fs.existsSync(tracksDir)) {
-            const files = fs.readdirSync(tracksDir);
-            for (const file of files) {
-              if (file.includes('.temp.')) {
+            for (const file of fs.readdirSync(tracksDir)) {
+              if (audioExtRegex.test(file)) {
                 try { fs.unlinkSync(path.join(tracksDir, file)); } catch(e) {}
               }
+            }
+          }
+        } catch(e) {}
+        try {
+          if (fs.existsSync(thumbnailsDir)) {
+            for (const file of fs.readdirSync(thumbnailsDir)) {
+              try { fs.unlinkSync(path.join(thumbnailsDir, file)); } catch(e) {}
             }
           }
         } catch(e) {}
