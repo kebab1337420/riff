@@ -458,6 +458,50 @@ function runGUI() {
         return { ok: true, dir: target, moved: move };
       });
 
+      const defaultDownloadsDir = () => {
+        try { return app.getPath('downloads'); } catch (e) { return null; }
+      };
+
+      ipcMain.handle('get-download-dir', () => {
+        const platform = require('./platform');
+        const def = defaultDownloadsDir();
+        const custom = platform.resolveDownloadDir();
+        return {
+          dir: custom || def,
+          defaultDir: def,
+          isCustom: !!custom
+        };
+      });
+
+      ipcMain.handle('pick-download-dir', async () => {
+        const platform = require('./platform');
+        const r = await dialog.showOpenDialog(mainWindow, {
+          title: 'Choose download folder',
+          defaultPath: platform.resolveDownloadDir() || defaultDownloadsDir() || undefined,
+          properties: ['openDirectory', 'createDirectory']
+        });
+        return r.canceled ? null : r.filePaths[0];
+      });
+
+      ipcMain.handle('set-download-dir', async (event, payload) => {
+        const platform = require('./platform');
+        const reset = !!(payload && payload.reset);
+        if (reset) {
+          platform.setDownloadDir(null);
+          return { ok: true, dir: defaultDownloadsDir(), reset: true };
+        }
+        const target = payload && payload.dir ? path.resolve(String(payload.dir)) : null;
+        if (!target) return { ok: false, error: 'No folder selected' };
+        try {
+          fs.mkdirSync(target, { recursive: true });
+          fs.accessSync(target, fs.constants.W_OK);
+        } catch (e) {
+          return { ok: false, error: 'That folder is not writable' };
+        }
+        platform.setDownloadDir(target);
+        return { ok: true, dir: target };
+      });
+
       ipcMain.on('restart-app', () => {
         app.relaunch();
         app.exit(0);

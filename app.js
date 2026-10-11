@@ -4729,6 +4729,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             showSettingsCategory(localStorage.getItem('riff_settings_cat') || 'interface');
             updateOfflineStorageUI();
             updateMusicFolderUI();
+            updateDownloadFolderUI();
             checkToolsStatus(false);
           }
 
@@ -7694,6 +7695,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         el.btnConfirmDownload.disabled = true;
         let done = 0;
         let failed = 0;
+        let lastDir = null;
         for (let i = 0; i < tracks.length; i++) {
           const t = tracks[i];
           if (el.downloadBtnText) el.downloadBtnText.textContent = `Downloading ${i + 1}/${tracks.length}`;
@@ -7709,6 +7711,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
             if (!data.success) throw new Error(data.error || 'Failed to download');
             done++;
+            if (data.directory) lastDir = data.directory;
           } catch (err) {
             failed++;
             console.error('Download failed:', t.title || t.url || '', err.message);
@@ -7717,7 +7720,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         el.btnConfirmDownload.disabled = false;
         downloadBatch = null;
         if (el.downloadModal) closeModal(el.downloadModal);
-        showToast(failed > 0 ? `Downloaded ${done}/${tracks.length} (${failed} failed)` : `Downloaded ${tracks.length} tracks to ~/Downloads`, failed > 0 ? 'error' : 'success');
+        showToast(failed > 0 ? `Downloaded ${done}/${tracks.length} (${failed} failed)` : `Downloaded ${tracks.length} tracks${lastDir ? ' to ' + lastDir : ''}`, failed > 0 ? 'error' : 'success');
         return;
       }
       if (!trackToDownload) return;
@@ -7741,7 +7744,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         if (!data.success) throw new Error(data.error || 'Failed to download');
 
-        showToast(`Download complete: saved to ~/Downloads/${data.filename}`, 'info');
+        showToast(`Download complete: saved to ${data.directory ? data.directory + '/' : ''}${data.filename}`, 'info');
         if (el.downloadModal) closeModal(el.downloadModal);
       } catch (err) {
         console.error('Download error:', err);
@@ -8607,6 +8610,79 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
+  async function updateDownloadFolderUI() {
+    const elPath = document.getElementById('download-folder-path');
+    const btnReset = document.getElementById('btn-reset-download-folder');
+    if (elPath) {
+      try {
+        if (window.electronAPI && window.electronAPI.getDownloadDir) {
+          const info = await window.electronAPI.getDownloadDir();
+          if (info && info.dir) {
+            elPath.textContent = info.isCustom ? info.dir : `${info.dir} (default)`;
+            if (btnReset) btnReset.classList.toggle('hidden', !info.isCustom);
+            return;
+          }
+        }
+      } catch (e) {
+        console.warn('getDownloadDir failed', e);
+      }
+      elPath.textContent = 'Unavailable';
+    }
+    if (btnReset) btnReset.classList.add('hidden');
+  }
+
+  const btnChangeDownloadFolder = document.getElementById('btn-change-download-folder');
+  if (btnChangeDownloadFolder) {
+    btnChangeDownloadFolder.addEventListener('click', async () => {
+      if (!window.electronAPI || !window.electronAPI.pickDownloadDir) return;
+      if (btnChangeDownloadFolder.disabled) return;
+      let info = null;
+      try { info = await window.electronAPI.getDownloadDir(); } catch (e) {}
+      const dir = await window.electronAPI.pickDownloadDir();
+      if (!dir) return;
+      if (info && info.dir && dir === info.dir) {
+        showToast('This is already the download folder');
+        return;
+      }
+      btnChangeDownloadFolder.disabled = true;
+      let res = null;
+      try {
+        res = await window.electronAPI.setDownloadDir(dir);
+      } catch (e) {
+        res = { ok: false, error: e.message };
+      }
+      btnChangeDownloadFolder.disabled = false;
+      if (!res || !res.ok) {
+        showToast((res && res.error) || 'Could not change the download folder', 'error');
+        return;
+      }
+      updateDownloadFolderUI();
+      showToast('Downloads will be saved to ' + res.dir);
+    });
+  }
+
+  const btnResetDownloadFolder = document.getElementById('btn-reset-download-folder');
+  if (btnResetDownloadFolder) {
+    btnResetDownloadFolder.addEventListener('click', async () => {
+      if (!window.electronAPI || !window.electronAPI.resetDownloadDir) return;
+      if (btnResetDownloadFolder.disabled) return;
+      btnResetDownloadFolder.disabled = true;
+      let res = null;
+      try {
+        res = await window.electronAPI.resetDownloadDir();
+      } catch (e) {
+        res = { ok: false, error: e.message };
+      }
+      btnResetDownloadFolder.disabled = false;
+      if (!res || !res.ok) {
+        showToast((res && res.error) || 'Could not reset the download folder', 'error');
+        return;
+      }
+      updateDownloadFolderUI();
+      showToast('Download folder reset to default');
+    });
+  }
+
   const btnDeleteOfflineTrack = document.getElementById('btn-delete-offline-track');
   if (btnDeleteOfflineTrack) {
     btnDeleteOfflineTrack.addEventListener('click', async () => {
@@ -9131,6 +9207,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   resizeCanvases();
   updateOfflineStorageUI();
   updateMusicFolderUI();
+  updateDownloadFolderUI();
   checkToolsStatus(false);
   setLyricsEmpty(true);
   updateLyricsTranslationUI();

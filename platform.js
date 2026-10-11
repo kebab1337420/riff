@@ -47,6 +47,23 @@ function setDataDir(dir) {
   return cfg.dataDir || DEFAULT_DATA_DIR;
 }
 
+function resolveDownloadDir() {
+  const configured = readConfig().downloadDir;
+  if (configured && typeof configured === 'string' && configured.trim()) {
+    try { return path.resolve(configured.trim()); } catch (e) {}
+  }
+  return null;
+}
+
+function setDownloadDir(dir) {
+  const cfg = readConfig();
+  if (dir && String(dir).trim()) cfg.downloadDir = path.resolve(String(dir).trim());
+  else delete cfg.downloadDir;
+  fs.mkdirSync(CONFIG_DIR, { recursive: true });
+  fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2), 'utf-8');
+  return cfg.downloadDir || null;
+}
+
 const DATA_DIR = resolveDataDir();
 
 const CACHE_DIR = path.join(DATA_DIR, 'tracks');
@@ -167,5 +184,5 @@ module.exports = {
   findInPath, resolveBinary, ytDlpCommand,
   tutorialDone, markTutorialDone,
   readStartupConfig, writeStartupConfig,
-  readConfig, resolveDataDir, setDataDir, copyDirContents, removeDirContents
+  readConfig, resolveDataDir, setDataDir, resolveDownloadDir, setDownloadDir, copyDirContents, removeDirContents
 };

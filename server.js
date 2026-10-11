@@ -8,7 +8,7 @@ const { spawn } = require("child_process");
 const { StringDecoder } = require("string_decoder");
 
 const PORT = 38472;
-const { CACHE_DIR, CUSTOM_LYRICS_DIR, LYRICS_DIR, THUMBNAILS_DIR, METADATA_PATH, LIBRARY_DIR, LIBRARY_PATH, ytDlpCommand } = require('./platform');
+const { CACHE_DIR, CUSTOM_LYRICS_DIR, LYRICS_DIR, THUMBNAILS_DIR, METADATA_PATH, LIBRARY_DIR, LIBRARY_PATH, ytDlpCommand, resolveDownloadDir } = require('./platform');
 
 if (!fs.existsSync(CACHE_DIR)) fs.mkdirSync(CACHE_DIR, { recursive: true });
 if (!fs.existsSync(CUSTOM_LYRICS_DIR)) fs.mkdirSync(CUSTOM_LYRICS_DIR, { recursive: true });
@@ -1350,10 +1350,16 @@ function handleAudioProxy(req, res, targetUrl) {
   }
 }
 
-let DOWNLOADS_DIR;
-try { DOWNLOADS_DIR = require('electron').app.getPath('downloads'); } catch (e) { DOWNLOADS_DIR = path.join(os.homedir(), 'Downloads'); }
-if (!fs.existsSync(DOWNLOADS_DIR)) {
-  try { fs.mkdirSync(DOWNLOADS_DIR, { recursive: true }); } catch (e) {}
+function defaultDownloadsDir() {
+  try { return require('electron').app.getPath('downloads'); } catch (e) { return path.join(os.homedir(), 'Downloads'); }
+}
+
+function getDownloadsDir() {
+  const dir = resolveDownloadDir() || defaultDownloadsDir();
+  if (!fs.existsSync(dir)) {
+    try { fs.mkdirSync(dir, { recursive: true }); } catch (e) {}
+  }
+  return dir;
 }
 
 function sanitizeFilename(str) {
@@ -1369,13 +1375,14 @@ async function handleDownload(req, res, trackUrl, title, artist, format = 'mp3',
     return res.end(JSON.stringify({ success: false, error: 'missing track information' }));
   }
 
+  const downloadsDir = getDownloadsDir();
   const cleanTitle = sanitizeFilename(title || 'untitled');
   const cleanArtist = sanitizeFilename(artist || 'unknown artist');
   const validFormats = ['mp3', 'm4a', 'flac', 'opus', 'wav'];
   const ext = validFormats.includes(format.toLowerCase()) ? format.toLowerCase() : 'mp3';
   const outFilename = `${cleanArtist} - ${cleanTitle}.${ext}`;
-  const outPath = path.join(DOWNLOADS_DIR, outFilename);
-  const tempTemplate = path.join(DOWNLOADS_DIR, `${cleanArtist} - ${cleanTitle}.%(ext)s`);
+  const outPath = path.join(downloadsDir, outFilename);
+  const tempTemplate = path.join(downloadsDir, `${cleanArtist} - ${cleanTitle}.%(ext)s`);
 
   let targetUrl = trackUrl;
   if (!targetUrl || targetUrl.includes('deezer.com')) {
@@ -1403,7 +1410,7 @@ async function handleDownload(req, res, trackUrl, title, artist, format = 'mp3',
       success: true,
       filename: outFilename,
       path: outPath,
-      directory: DOWNLOADS_DIR
+      directory: downloadsDir
     }));
   } catch (err) {
     try {
@@ -1423,7 +1430,7 @@ async function handleDownload(req, res, trackUrl, title, artist, format = 'mp3',
         success: true,
         filename: outFilename,
         path: outPath,
-        directory: DOWNLOADS_DIR
+        directory: downloadsDir
       }));
     } catch (e2) {
       res.writeHead(500, { 'Content-Type': 'application/json' });

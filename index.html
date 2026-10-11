@@ -1034,6 +1034,24 @@
                 <button class="btn-outline-pill" id="btn-change-music-folder" style="padding: 6px 14px; font-size: calc(12px * var(--font-scale, 1)); flex-shrink: 0;">Change</button>
               </div>
             </div>
+
+            <div class="setting-item" id="download-folder-item">
+              <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                  <div style="width: 32px; height: 32px; border-radius: 50%; background: var(--md-sys-color-surface-container-high); display: flex; align-items: center; justify-content: center; color: var(--md-sys-color-primary);">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  </div>
+                  <div style="display: flex; flex-direction: column; min-width: 0;">
+                    <span class="setting-name">Download folder</span>
+                    <span id="download-folder-path" style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline); word-break: break-all;">Calculating...</span>
+                  </div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
+                  <button class="btn-outline-pill hidden" id="btn-reset-download-folder" style="padding: 6px 14px; font-size: calc(12px * var(--font-scale, 1));">Reset</button>
+                  <button class="btn-outline-pill" id="btn-change-download-folder" style="padding: 6px 14px; font-size: calc(12px * var(--font-scale, 1));">Change</button>
+                </div>
+              </div>
+            </div>
             </div>
           </div>
 
