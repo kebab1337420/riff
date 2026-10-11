@@ -262,7 +262,21 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
   }
 
-  const rawCustomPresets = JSON.parse(localStorage.getItem('devsize_custom_presets') || '[]');
+  function safeJson(key, fallback) {
+    try {
+      const raw = localStorage.getItem(key);
+      return raw == null ? fallback : JSON.parse(raw);
+    } catch (e) {
+      return fallback;
+    }
+  }
+
+  function safeArray(key) {
+    const value = safeJson(key, []);
+    return Array.isArray(value) ? value : [];
+  }
+
+  const rawCustomPresets = safeArray('devsize_custom_presets');
   const normalizedCustomPresets = rawCustomPresets.map(normalizePreset).filter(Boolean);
 
   const state = {
@@ -319,10 +333,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                           air: 0,
                           bass: 0
                           },
-                          vfx: { ...defaultVfx, ...JSON.parse(localStorage.getItem('devsize_vfx') || '{}'), bassPulse: false, particles: false, soundwaveRings: false, borderGlow: false, backdropBlur: false, crt: false, grain: false, lyricsSpotlight: false },
-                          favorites: JSON.parse(localStorage.getItem('devsize_favorites') || '[]'),
-                          history: JSON.parse(localStorage.getItem('devsize_history') || '[]'),
-                          playlists: JSON.parse(localStorage.getItem('devsize_playlists') || '[]'),
+                          vfx: { ...defaultVfx, ...safeJson('devsize_vfx', {}), bassPulse: false, particles: false, soundwaveRings: false, borderGlow: false, backdropBlur: false, crt: false, grain: false, lyricsSpotlight: false },
+                          favorites: safeArray('devsize_favorites'),
+                          history: safeArray('devsize_history'),
+                          playlists: safeArray('devsize_playlists'),
                           customPresets: normalizedCustomPresets,
                           localTracks: [],
                           syncedLyrics: [],
@@ -334,7 +348,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                           currentAbortController: null,
                           presetToRenameId: null,
                           serverPort: 38472,
-                          discordRpcEnabled: JSON.parse(localStorage.getItem('devsize_discord_rpc') ?? 'true'),
+                          discordRpcEnabled: safeJson('devsize_discord_rpc', true),
                           lastBroadcastStateKey: null,
                           syncTimeout: null,
                           scrubberDragTargetTime: undefined
