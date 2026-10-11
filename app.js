@@ -282,6 +282,27 @@ document.addEventListener('DOMContentLoaded', async () => {
   const savedVolumeRaw = parseFloat(localStorage.getItem('riff_volume'));
   const savedVolume = Number.isFinite(savedVolumeRaw) ? Math.max(0, Math.min(1, savedVolumeRaw)) : 0.85;
 
+  const DEFAULT_AUDIO_SETTINGS = { speed: 1.0, speedPitch: 1.0, pitch: 0, reverb: 0, distortion: 0, volume: 1.0, echo: 0, eq: { low: 0, mid: 0, high: 0 } };
+  const DEFAULT_HQ_SETTINGS = { engine: 'hqmusic-3', preset: 'studio', vocal: 0, air: 0, bass: 0 };
+
+  function loadSoundSettings() {
+    const savedAudio = safeJson('riff_audio_settings', null);
+    const savedHq = safeJson('riff_hq_settings', null);
+    const audioObj = savedAudio && typeof savedAudio === 'object' ? savedAudio : {};
+    const hqObj = savedHq && typeof savedHq === 'object' ? savedHq : {};
+    return {
+      audioSettings: {
+        ...DEFAULT_AUDIO_SETTINGS,
+        ...audioObj,
+        eq: { ...DEFAULT_AUDIO_SETTINGS.eq, ...(audioObj.eq && typeof audioObj.eq === 'object' ? audioObj.eq : {}) }
+      },
+      hqEnabled: localStorage.getItem('riff_hq_enabled') === '1',
+      hqSettings: { ...DEFAULT_HQ_SETTINGS, ...hqObj }
+    };
+  }
+
+  const savedSound = loadSoundSettings();
+
   const state = {
     platform: localStorage.getItem('riff_platform') || 'youtube',
     currentView: 'discover',
@@ -306,7 +327,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     isRightPanelOpen: true,
     lyricsMode: 'line',
     uiScale: savedScale,
-    activePresetId: 'p_default',
+    activePresetId: localStorage.getItem('riff_active_preset') || 'p_default',
     themeMode: localStorage.getItem('riff_theme_mode') || 'dark',
     paletteStyle: localStorage.getItem('riff_palette_style') || 'classic',
     meshBrightness: parseInt(localStorage.getItem('riff_mesh_brightness') || '100', 10),
@@ -319,24 +340,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     trActive: false,
     currentTranslations: null,
     isTvKaraokeOpen: false,
-                          audioSettings: {
-                            speed: 1.0,
-                          speedPitch: 1.0,
-                          pitch: 0,
-                          reverb: 0,
-                          distortion: 0,
-                          volume: 1.0,
-                          echo: 0,
-                          eq: { low: 0, mid: 0, high: 0 }
-                          },
-                          hqEnabled: false,
-                          hqSettings: {
-                            engine: 'hqmusic-3',
-                          preset: 'studio',
-                          vocal: 0,
-                          air: 0,
-                          bass: 0
-                          },
+                          audioSettings: savedSound.audioSettings,
+                          hqEnabled: savedSound.hqEnabled,
+                          hqSettings: savedSound.hqSettings,
                           vfx: { ...defaultVfx, ...safeJson('devsize_vfx', {}), bassPulse: false, particles: false, soundwaveRings: false, borderGlow: false, backdropBlur: false, crt: false, grain: false, lyricsSpotlight: false },
                           favorites: safeArray('devsize_favorites'),
                           history: safeArray('devsize_history'),
@@ -1615,6 +1621,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   let hlsInstance = null;
   let animationFrameId = null;
 
+  syncSettingsSlidersToState();
+  updateHqRouting();
+  renderPresets();
+
   function initAudioContext() {
     audioEngine.init(el.nativeAudio);
     
@@ -1637,15 +1647,33 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (el.hqEnhancerCard) el.hqEnhancerCard.classList.toggle('is-expanded', !!state.hqEnabled);
   }
 
+  let soundSettingsSaveTimer = null;
+  function persistSoundSettings() {
+    if (soundSettingsSaveTimer) clearTimeout(soundSettingsSaveTimer);
+    soundSettingsSaveTimer = setTimeout(() => {
+      soundSettingsSaveTimer = null;
+      try {
+        localStorage.setItem('riff_hq_enabled', state.hqEnabled ? '1' : '0');
+        localStorage.setItem('riff_hq_settings', JSON.stringify(state.hqSettings));
+        localStorage.setItem('riff_audio_settings', JSON.stringify(state.audioSettings));
+        localStorage.setItem('riff_active_preset', state.activePresetId || '');
+      } catch (e) {
+        console.warn('Failed to save sound settings', e);
+      }
+    }, 300);
+  }
+
   function applyHqSettings() {
     updateHqRouting();
     audioEngine.setHqSettings(state.hqSettings);
+    persistSoundSettings();
   }
   
   function applyAudioSettings() {
     audioEngine.setAudioSettings(state.audioSettings);
     audioEngine.setVolume(state.volume, state.isMuted);
     audioEngine.applySettings(el.nativeAudio);
+    persistSoundSettings();
     
     if (el.settingsModifiedDot) {
       if (audioEngine.isModified()) {
@@ -3531,6 +3559,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     state.activePresetId = newPreset.id;
     localStorage.setItem('devsize_custom_presets', JSON.stringify(state.customPresets));
     renderPresets();
+    persistSoundSettings();
   }
 
   function openRenamePresetModal(preset) {
@@ -3555,6 +3584,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (state.activePresetId === id) state.activePresetId = 'p_default';
     localStorage.setItem('devsize_custom_presets', JSON.stringify(state.customPresets));
     renderPresets();
+    persistSoundSettings();
   }
 
   function openDeletePresetConfirm(preset) {
@@ -5489,6 +5519,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
       initAudioContext();
       updateHqRouting();
+      persistSoundSettings();
     });
   }
 
