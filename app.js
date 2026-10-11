@@ -4729,7 +4729,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             showSettingsCategory(localStorage.getItem('riff_settings_cat') || 'interface');
             updateOfflineStorageUI();
             updateMusicFolderUI();
-            updateDownloadFolderUI();
+  updateDownloadFolderUI();
+  updateDownloadCaptionPath();
             checkToolsStatus(false);
           }
 
@@ -7585,6 +7586,23 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
+  async function updateDownloadCaptionPath() {
+    const elPath = document.getElementById('download-caption-path');
+    if (!elPath) return;
+    try {
+      if (window.electronAPI && window.electronAPI.getDownloadDir) {
+        const info = await window.electronAPI.getDownloadDir();
+        if (info && info.dir) {
+          elPath.textContent = info.dir;
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn('getDownloadDir failed', e);
+    }
+    elPath.textContent = '~/Downloads';
+  }
+
   function openDownloadModal(track) {
     if (!track || !el.downloadModal || track.platform === 'local') return;
     trackToDownload = track;
@@ -7608,6 +7626,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     updateDownloadBtnLabel();
     updateLosslessQualityState();
+    updateDownloadCaptionPath();
 
     const btnDeleteOfflineTrack = document.getElementById('btn-delete-offline-track');
     if (btnDeleteOfflineTrack) {
@@ -7645,6 +7664,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (el.downloadPreviewFallback) el.downloadPreviewFallback.style.display = 'none';
     updateDownloadBtnLabel();
     updateLosslessQualityState();
+    updateDownloadCaptionPath();
     openModal(el.downloadModal);
   }
 
@@ -8657,6 +8677,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         return;
       }
       updateDownloadFolderUI();
+      updateDownloadCaptionPath();
       showToast('Downloads will be saved to ' + res.dir);
     });
   }
