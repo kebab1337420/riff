@@ -1015,6 +1015,21 @@
                 <button class="btn-outline-pill" id="btn-clear-offline" style="padding: 6px 14px; font-size: calc(12px * var(--font-scale, 1));">Clear</button>
               </div>
             </div>
+
+            <div class="setting-item" id="music-folder-item">
+              <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                  <div style="width: 32px; height: 32px; border-radius: 50%; background: var(--md-sys-color-surface-container-high); display: flex; align-items: center; justify-content: center; color: var(--md-sys-color-primary);">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+                  </div>
+                  <div style="display: flex; flex-direction: column; min-width: 0;">
+                    <span class="setting-name">Music folder</span>
+                    <span id="music-folder-path" style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline); word-break: break-all;">Calculating...</span>
+                  </div>
+                </div>
+                <button class="btn-outline-pill" id="btn-change-music-folder" style="padding: 6px 14px; font-size: calc(12px * var(--font-scale, 1)); flex-shrink: 0;">Change</button>
+              </div>
+            </div>
             </div>
           </div>
 

@@ -398,6 +398,71 @@ function runGUI() {
         return out;
       });
 
+      ipcMain.handle('get-data-dir', () => {
+        const platform = require('./platform');
+        return {
+          dir: platform.DATA_DIR,
+          defaultDir: platform.DEFAULT_DATA_DIR,
+          isCustom: platform.DATA_DIR !== platform.DEFAULT_DATA_DIR
+        };
+      });
+
+      ipcMain.handle('pick-data-dir', async () => {
+        const platform = require('./platform');
+        const r = await dialog.showOpenDialog(mainWindow, {
+          title: 'Choose music folder',
+          defaultPath: platform.DATA_DIR,
+          properties: ['openDirectory', 'createDirectory']
+        });
+        return r.canceled ? null : r.filePaths[0];
+      });
+
+      ipcMain.handle('set-data-dir', async (event, payload) => {
+        const platform = require('./platform');
+        const target = payload && payload.dir ? path.resolve(String(payload.dir)) : null;
+        const move = !!(payload && payload.move);
+        if (!target) return { ok: false, error: 'No folder selected' };
+
+        const current = path.resolve(platform.DATA_DIR);
+        if (target === current) return { ok: true, dir: target, moved: false };
+
+        const rel = path.relative(current, target);
+        const insideCurrent = rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+        const relBack = path.relative(target, current);
+        const currentInsideTarget = relBack === '' || (!relBack.startsWith('..') && !path.isAbsolute(relBack));
+        if (insideCurrent || currentInsideTarget) {
+          return { ok: false, error: 'Choose a folder outside the current music folder' };
+        }
+
+        try {
+          fs.mkdirSync(target, { recursive: true });
+          fs.accessSync(target, fs.constants.W_OK);
+        } catch (e) {
+          return { ok: false, error: 'That folder is not writable' };
+        }
+
+        if (move) {
+          try {
+            await platform.copyDirContents(current, target);
+          } catch (e) {
+            return { ok: false, error: 'Could not move files: ' + e.message };
+          }
+        }
+
+        platform.setDataDir(target);
+
+        if (move) {
+          try { await platform.removeDirContents(current); } catch (e) {}
+        }
+
+        return { ok: true, dir: target, moved: move };
+      });
+
+      ipcMain.on('restart-app', () => {
+        app.relaunch();
+        app.exit(0);
+      });
+
       ipcMain.on('set-tray-on-close', (e, v) => {
         trayOnClose = !!v;
       });

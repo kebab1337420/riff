@@ -4728,6 +4728,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (el.navSettings) el.navSettings.classList.add('active');
             showSettingsCategory(localStorage.getItem('riff_settings_cat') || 'interface');
             updateOfflineStorageUI();
+            updateMusicFolderUI();
             checkToolsStatus(false);
           }
 
@@ -8480,6 +8481,63 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
+  async function updateMusicFolderUI() {
+    const elPath = document.getElementById('music-folder-path');
+    if (!elPath) return;
+    try {
+      if (window.electronAPI && window.electronAPI.getDataDir) {
+        const info = await window.electronAPI.getDataDir();
+        if (info && info.dir) {
+          elPath.textContent = info.isCustom ? info.dir : `${info.dir} (default)`;
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn('getDataDir failed', e);
+    }
+    elPath.textContent = 'Unavailable';
+  }
+
+  const btnChangeMusicFolder = document.getElementById('btn-change-music-folder');
+  if (btnChangeMusicFolder) {
+    btnChangeMusicFolder.addEventListener('click', async () => {
+      if (!window.electronAPI || !window.electronAPI.pickDataDir) return;
+      if (btnChangeMusicFolder.disabled) return;
+      let info = null;
+      try { info = await window.electronAPI.getDataDir(); } catch (e) {}
+      const dir = await window.electronAPI.pickDataDir();
+      if (!dir) return;
+      if (info && info.dir && dir === info.dir) {
+        showToast('This is already the music folder');
+        return;
+      }
+      const move = window.confirm(
+        'Move your existing music to the new folder?\n\n' +
+        'OK: move all downloaded and imported files, then restart Riff.\n' +
+        'Cancel: switch to the new folder without moving (files stay in the old one).'
+      );
+      btnChangeMusicFolder.disabled = true;
+      const originalLabel = btnChangeMusicFolder.textContent;
+      btnChangeMusicFolder.textContent = move ? 'Moving...' : 'Switching...';
+      showToast(move ? 'Moving your music, this may take a while...' : 'Switching music folder...');
+      let res = null;
+      try {
+        res = await window.electronAPI.setDataDir(dir, move);
+      } catch (e) {
+        res = { ok: false, error: e.message };
+      }
+      if (!res || !res.ok) {
+        showToast((res && res.error) || 'Could not change the music folder', 'error');
+        btnChangeMusicFolder.disabled = false;
+        btnChangeMusicFolder.textContent = originalLabel;
+        return;
+      }
+      btnChangeMusicFolder.textContent = 'Restarting...';
+      showToast('Restarting Riff...');
+      setTimeout(() => { if (window.electronAPI.restartApp) window.electronAPI.restartApp(); }, 400);
+    });
+  }
+
   const btnDeleteOfflineTrack = document.getElementById('btn-delete-offline-track');
   if (btnDeleteOfflineTrack) {
     btnDeleteOfflineTrack.addEventListener('click', async () => {
@@ -9003,6 +9061,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   loadHomePage();
   resizeCanvases();
   updateOfflineStorageUI();
+  updateMusicFolderUI();
   checkToolsStatus(false);
   setLyricsEmpty(true);
   updateLyricsTranslationUI();

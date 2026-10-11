@@ -4,11 +4,50 @@ const path = require('path');
 
 const IS_WIN = process.platform === 'win32';
 
-const DATA_DIR = IS_WIN
+const DEFAULT_DATA_DIR = IS_WIN
   ? path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'), 'Riff')
   : process.platform === 'darwin'
   ? path.join(os.homedir(), 'Library', 'Application Support', 'Riff')
   : path.join(os.homedir(), '.cache', 'devsize');
+
+const CONFIG_DIR = IS_WIN
+  ? path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'), 'Riff')
+  : process.platform === 'darwin'
+  ? path.join(os.homedir(), 'Library', 'Application Support', 'Riff')
+  : path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'devsize');
+const CONFIG_PATH = path.join(CONFIG_DIR, 'config.json');
+
+function readConfig() {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch (e) {
+    return {};
+  }
+}
+
+function resolveDataDir() {
+  const override = process.env.RIFF_DATA_DIR;
+  if (override && override.trim()) {
+    try { return path.resolve(override.trim()); } catch (e) {}
+  }
+  const configured = readConfig().dataDir;
+  if (configured && typeof configured === 'string' && configured.trim()) {
+    try { return path.resolve(configured.trim()); } catch (e) {}
+  }
+  return DEFAULT_DATA_DIR;
+}
+
+function setDataDir(dir) {
+  const cfg = readConfig();
+  if (dir && String(dir).trim()) cfg.dataDir = path.resolve(String(dir).trim());
+  else delete cfg.dataDir;
+  fs.mkdirSync(CONFIG_DIR, { recursive: true });
+  fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2), 'utf-8');
+  return cfg.dataDir || DEFAULT_DATA_DIR;
+}
+
+const DATA_DIR = resolveDataDir();
 
 const CACHE_DIR = path.join(DATA_DIR, 'tracks');
 const CUSTOM_LYRICS_DIR = path.join(DATA_DIR, 'custom-lyrics');
@@ -35,6 +74,32 @@ function markTutorialDone() {
     try { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, '1'); return true; } catch (e) {}
   }
   return false;
+}
+
+async function copyDirContents(fromDir, toDir, skipNames = new Set(['config.json'])) {
+  await fs.promises.mkdir(toDir, { recursive: true });
+  const entries = await fs.promises.readdir(fromDir, { withFileTypes: true });
+  for (const entry of entries) {
+    if (skipNames.has(entry.name)) continue;
+    const src = path.join(fromDir, entry.name);
+    const dest = path.join(toDir, entry.name);
+    if (entry.isDirectory()) await copyDirContents(src, dest, skipNames);
+    else if (entry.isFile()) await fs.promises.copyFile(src, dest);
+  }
+}
+
+async function removeDirContents(dir, skipNames = new Set(['config.json'])) {
+  const entries = await fs.promises.readdir(dir, { withFileTypes: true });
+  for (const entry of entries) {
+    if (skipNames.has(entry.name)) continue;
+    const target = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      await removeDirContents(target, skipNames);
+      try { await fs.promises.rmdir(target); } catch (e) {}
+    } else if (entry.isFile()) {
+      try { await fs.promises.unlink(target); } catch (e) {}
+    }
+  }
 }
 
 function isExecutableFile(p) {
@@ -97,9 +162,10 @@ function clearBinaryCache() {
 
 module.exports = {
   clearBinaryCache,
-  IS_WIN, DATA_DIR, BIN_DIR, CACHE_DIR, CUSTOM_LYRICS_DIR, LYRICS_DIR, THUMBNAILS_DIR, METADATA_PATH,
+  IS_WIN, DATA_DIR, DEFAULT_DATA_DIR, CONFIG_PATH, BIN_DIR, CACHE_DIR, CUSTOM_LYRICS_DIR, LYRICS_DIR, THUMBNAILS_DIR, METADATA_PATH,
   LIBRARY_DIR, LIBRARY_PATH, STARTUP_PATH,
   findInPath, resolveBinary, ytDlpCommand,
   tutorialDone, markTutorialDone,
-  readStartupConfig, writeStartupConfig
+  readStartupConfig, writeStartupConfig,
+  readConfig, resolveDataDir, setDataDir, copyDirContents, removeDirContents
 };
