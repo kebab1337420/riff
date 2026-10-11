@@ -7692,6 +7692,48 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
+  const btnDownloadPlaylist = document.getElementById('btn-download-playlist');
+  if (btnDownloadPlaylist) {
+    btnDownloadPlaylist.addEventListener('click', async () => {
+      const pl = (state.playlists || []).find(p => p.id === state.currentPlaylistId);
+      const tracks = (pl && Array.isArray(pl.tracks) ? pl.tracks : []).filter(t => t.platform !== 'local');
+      if (!pl || tracks.length === 0) {
+        showToast('No remote tracks to download in this playlist', 'info');
+        return;
+      }
+      if (!window.confirm(`Download ${tracks.length} track${tracks.length === 1 ? '' : 's'} from "${pl.name}" to ~/Downloads as .${selectedFormat}?`)) return;
+      const label = document.getElementById('btn-download-playlist-label');
+      const originalLabel = label ? label.textContent : '';
+      btnDownloadPlaylist.disabled = true;
+      if (label) label.textContent = 'Starting...';
+      let done = 0;
+      let failed = 0;
+      for (let i = 0; i < tracks.length; i++) {
+        const t = tracks[i];
+        if (label) label.textContent = `${i + 1}/${tracks.length}`;
+        try {
+          const downloadUrl = `http://127.0.0.1:${state.serverPort}/api/download?url=${encodeURIComponent(t.url || '')}&title=${encodeURIComponent(t.title || '')}&artist=${encodeURIComponent(t.artist || '')}&format=${selectedFormat}&quality=${selectedQuality}`;
+          const res = await fetch(downloadUrl);
+          const text = await res.text();
+          let data;
+          try {
+            data = JSON.parse(text);
+          } catch (e) {
+            throw new Error(text || 'server error');
+          }
+          if (!data.success) throw new Error(data.error || 'Failed to download');
+          done++;
+        } catch (err) {
+          failed++;
+          console.error('Download failed:', t.title || t.url || '', err.message);
+        }
+      }
+      btnDownloadPlaylist.disabled = false;
+      if (label) label.textContent = originalLabel;
+      showToast(failed > 0 ? `Downloaded ${done}/${tracks.length} (${failed} failed)` : `Downloaded ${tracks.length} tracks to ~/Downloads`, failed > 0 ? 'error' : 'success');
+    });
+  }
+
   updateFavoritesBadge();
   fetch(`http://127.0.0.1:${state.serverPort}/api/library`).then(r => r.json()).then(data => {
     state.localTracks = data;
