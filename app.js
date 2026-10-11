@@ -265,6 +265,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   const rawCustomPresets = JSON.parse(localStorage.getItem('devsize_custom_presets') || '[]');
   const normalizedCustomPresets = rawCustomPresets.map(normalizePreset).filter(Boolean);
 
+  const savedVolumeRaw = parseFloat(localStorage.getItem('riff_volume'));
+  const savedVolume = Number.isFinite(savedVolumeRaw) ? Math.max(0, Math.min(1, savedVolumeRaw)) : 0.85;
+
   const state = {
     platform: 'youtube',
     currentView: 'discover',
@@ -279,8 +282,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     currentTrackContext: null,
     currentTrackIndexInContext: -1,
     isPlaying: false,
-    isMuted: false,
-    volume: 0.85,
+    isMuted: localStorage.getItem('riff_muted') === '1',
+    volume: savedVolume,
     isRepeat: localStorage.getItem('riff_repeat') === '1',
     isShuffle: localStorage.getItem('riff_shuffle') === '1',
     isAutoRemix: false,
@@ -4830,12 +4833,25 @@ document.addEventListener('DOMContentLoaded', async () => {
   window.toggleShuffle = () => el.btnShuffle && el.btnShuffle.click();
   window.toggleRepeat = () => el.btnRepeat && el.btnRepeat.click();
 
+  function persistVolumeState() {
+    try {
+      localStorage.setItem('riff_volume', String(state.volume));
+      localStorage.setItem('riff_muted', state.isMuted ? '1' : '0');
+    } catch (e) {}
+  }
+
   if (el.volumeSlider) {
+    el.volumeSlider.value = String(state.volume);
+    if (state.isMuted) {
+      if (el.volumeIcon) el.volumeIcon.classList.add('hidden');
+      if (el.volumeMutedIcon) el.volumeMutedIcon.classList.remove('hidden');
+    }
     el.volumeSlider.addEventListener('input', (e) => {
       state.volume = parseFloat(e.target.value);
       state.isMuted = false;
       if (el.volumeIcon) el.volumeIcon.classList.remove('hidden');
       if (el.volumeMutedIcon) el.volumeMutedIcon.classList.add('hidden');
+      persistVolumeState();
       applyAudioSettings();
     });
   }
@@ -4850,6 +4866,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (el.volumeIcon) el.volumeIcon.classList.remove('hidden');
         if (el.volumeMutedIcon) el.volumeMutedIcon.classList.add('hidden');
       }
+      persistVolumeState();
       applyAudioSettings();
     });
   }
@@ -6173,6 +6190,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (el.volumeSlider) el.volumeSlider.value = state.volume;
     if (el.volumeIcon) el.volumeIcon.classList.remove('hidden');
     if (el.volumeMutedIcon) el.volumeMutedIcon.classList.add('hidden');
+    persistVolumeState();
     applyAudioSettings();
   }
 
