@@ -179,6 +179,15 @@ button:active, .chip-btn:active, .mix-card:active, .track-row:active, .rail-icon
   }
 }
 
+.force-reduced-motion *,
+.force-reduced-motion *::before,
+.force-reduced-motion *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
+}
+
 #custom-bg {
   position: fixed;
   inset: 0;

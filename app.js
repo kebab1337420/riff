@@ -200,6 +200,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   function openModal(elModal) {
     if (!elModal) return;
+    if (elModal._closeTimer) { clearTimeout(elModal._closeTimer); elModal._closeTimer = null; }
     elModal.classList.remove('hidden');
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
@@ -211,7 +212,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   function closeModal(elModal) {
     if (!elModal) return;
     elModal.classList.remove('visible');
-    setTimeout(() => {
+    if (elModal._closeTimer) clearTimeout(elModal._closeTimer);
+    elModal._closeTimer = setTimeout(() => {
+      elModal._closeTimer = null;
       elModal.classList.add('hidden');
     }, 200);
   }
@@ -501,7 +504,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   function applyReducedMotionSetting() {
-    document.documentElement.classList.remove('force-reduced-motion');
+    const reduced = getAdv('reduce_motion', false);
+    document.documentElement.classList.toggle('force-reduced-motion', reduced);
   }
 
   const PALETTE_STYLES = {
@@ -2282,9 +2286,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         state.queueIndex = 0;
       }
       state.queueHistory = [state.queueIndex];
-    } else if (!state.queue.some(t => isSameTrack(t, track))) {
-      state.queue.push(track);
-      state.queueIndex = state.queue.length - 1;
+    } else {
+      const existingIndex = state.queue.findIndex(t => isSameTrack(t, track));
+      if (existingIndex === -1) {
+        state.queue.push(track);
+        state.queueIndex = state.queue.length - 1;
+      } else {
+        state.queueIndex = existingIndex;
+      }
       state.queueHistory = [state.queueIndex];
     }
     updateQueueBadge();
@@ -3523,7 +3532,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   function saveCustomPreset(name) {
     if (!name || !name.trim()) return;
     const newPreset = {
-      id: 'custom_' + Date.now(),
+      id: 'custom_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
                           name: name.trim(),
                           settings: { ...state.audioSettings }
     };
@@ -3568,6 +3577,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   async function performSearch(query) {
     if (!query || !query.trim()) return;
 
+    const searchToken = (state.searchToken || 0) + 1;
+    state.searchToken = searchToken;
+
     state.searchQuery = query.trim().toLowerCase();
     switchView('discover');
 
@@ -3592,6 +3604,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const searchUrl = `http://127.0.0.1:${state.serverPort}/api/search?q=${encodeURIComponent(state.searchQuery)}&platform=${state.platform}&limit=20`;
       const res = await fetch(searchUrl);
       const data = await res.json();
+      if (state.searchToken !== searchToken) return;
 
       if (!data.success || !data.tracks) {
         if (state.platform === 'ytmusic') showToast('YouTube Music is unavailable');
@@ -3605,6 +3618,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (el.searchTracksList) renderTracks(el.searchTracksList, data.tracks, 'search');
       });
     } catch (err) {
+      if (state.searchToken !== searchToken) return;
       console.error('Search error:', err);
       const isOff = !navigator.onLine;
       if (el.searchTracksList) el.searchTracksList.innerHTML = `<div class="empty-hint">${isOff ? 'Offline: connect to the internet to search new tracks' : 'Error fetching results: ' + err.message}</div>`;
@@ -3710,10 +3724,6 @@ document.addEventListener('DOMContentLoaded', async () => {
               currentList = pl.tracks;
               clickIndex = pl.tracks.findIndex(t => isSameTrack(t, track));
             }
-          } else if (row.parentElement) {
-            const rows = Array.from(row.parentElement.querySelectorAll('.track-row'));
-            const domPos = rows.indexOf(row);
-            if (domPos !== -1) clickIndex = domPos;
           }
           playTrack(track, currentList, clickIndex >= 0 ? clickIndex : idx, context);
         });
@@ -3813,11 +3823,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!tracks || tracks.length === 0) {
       container.style.paddingTop = '0px';
       container.style.paddingBottom = '0px';
-      container.innerHTML = '<div class="empty-hint">X</div>';
+      const emptyMessages = {
+        search: 'No matching tracks. Try a different search',
+        favorites: 'No favourites yet. Use the heart on a track to save it',
+        playlist: 'This playlist is empty',
+        local: 'Your library is empty. Add some music to get started'
+      };
+      container.innerHTML = `<div class="empty-hint">${emptyMessages[context] || 'No tracks to show'}</div>`;
       return;
     }
 
-    const itemHeight = 68;
+    const itemHeight = 64;
     const overscan = 15;
     
     function renderChunk() {
@@ -4522,7 +4538,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   function createPlaylist(name, initialTracks = []) {
     if (!name || !name.trim()) return;
-    const newPl = { id: 'pl_' + Date.now(), name: name.trim(), tracks: Array.isArray(initialTracks) ? initialTracks : [] };
+    const newPl = { id: 'pl_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7), name: name.trim(), tracks: Array.isArray(initialTracks) ? initialTracks : [] };
     state.playlists.push(newPl);
     localStorage.setItem('devsize_playlists', JSON.stringify(state.playlists));
     renderPlaylistsList();
