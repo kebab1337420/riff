@@ -3568,11 +3568,15 @@ body.is-window-resizing .platform-switch-container {
 }
 
 .riff-toast.error {
-  background: var(--md-sys-color-error-container);
-  color: var(--md-sys-color-on-error-container);
+  background: var(--md-sys-color-error);
+  color: #ffffff;
+  box-shadow: 0 6px 20px rgba(179, 38, 30, 0.45);
 }
 .riff-toast.error .toast-icon {
-  color: var(--md-sys-color-error);
+  color: #ffffff;
+}
+.riff-toast.error .toast-text {
+  color: #ffffff;
 }
 
 .app-splash-screen {
