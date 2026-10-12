@@ -3607,7 +3607,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch (err) {
       console.error('Search error:', err);
       const isOff = !navigator.onLine;
-      if (el.searchTracksList) el.searchTracksList.innerHTML = `<div class="empty-hint">${isOff ? 'Offline: connect to the internet to search new tracks' : 'Error fetching results: ' + err.message}</div>`;
+      if (el.searchTracksList) el.searchTracksList.innerHTML = `<div class="empty-hint">${isOff ? 'Offline: connect to the internet to search new tracks' : 'Error fetching results: ' + escapeHtml(err.message)}</div>`;
       if (el.resultsCount) el.resultsCount.textContent = isOff ? 'offline' : 'error';
     }
   }
@@ -6760,7 +6760,15 @@ document.addEventListener('DOMContentLoaded', async () => {
       .replace(/(^|[\s,{};])html(?![\w-])/g, '$1:host')
       .replace(/(^|[\s,{};])body(?![\w-])/g, '$1.ct-mini');
     const root = host.shadowRoot || host.attachShadow({ mode: 'open' });
-    root.innerHTML = `<style>.ct-mini{position:absolute;left:0;top:0;transform-origin:0 0;overflow:hidden;}</style><style>${rewrite(appCssCache)}</style><style>${rewrite(themeCss)}</style>`;
+    root.textContent = '';
+    const addStyle = (css) => {
+      const styleEl = document.createElement('style');
+      styleEl.textContent = css;
+      root.appendChild(styleEl);
+    };
+    addStyle('.ct-mini{position:absolute;left:0;top:0;transform-origin:0 0;overflow:hidden;}');
+    addStyle(rewrite(appCssCache));
+    addStyle(rewrite(themeCss));
     const mini = document.createElement('div');
     mini.className = `ct-mini ${document.body.className}`;
     mini.style.width = `${window.innerWidth}px`;
@@ -7174,7 +7182,18 @@ document.addEventListener('DOMContentLoaded', async () => {
       bar.classList.add('hidden'); bar.firstElementChild.style.width = '0';
       nowB.disabled = laterB.disabled = false;
       nowB.classList.toggle('hidden', !d.canInstall); laterB.classList.toggle('hidden', !d.canInstall);
-      text.innerHTML = d.canInstall ? 'A new version is ready to download.' : 'Download the new version manually: <a href="' + d.url + '" target="_blank" rel="noopener">open the release page</a>.';
+      if (d.canInstall) {
+        text.textContent = 'A new version is ready to download.';
+      } else {
+        text.textContent = 'Download the new version manually: ';
+        const link = document.createElement('a');
+        link.href = /^https?:\/\//i.test(String(d.url || '')) ? d.url : '#';
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        link.textContent = 'open the release page';
+        text.appendChild(link);
+        text.appendChild(document.createTextNode('.'));
+      }
       openModal(modal);
     });
     api.onUpdateProgress((d) => { bar.classList.remove('hidden'); bar.firstElementChild.style.width = d.percent + '%'; text.textContent = 'Downloading... ' + d.percent + '%'; });
