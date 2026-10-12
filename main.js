@@ -1,11 +1,38 @@
 const { app, BrowserWindow, dialog, ipcMain, screen, shell, Tray, Menu, nativeImage, globalShortcut, powerMonitor } = require('electron');
 const fs = require('fs');
 const path = require('path');
-const { pathToFileURL } = require('url');
+const { pathToFileURL, fileURLToPath } = require('url');
 const { spawn } = require('child_process');
 const crypto = require('crypto');
 const { LIBRARY_DIR, tutorialDone, markTutorialDone, readStartupConfig, writeStartupConfig } = require('./platform');
 const { getLauncherInfo, installLauncher } = require('./launcher');
+
+function isSafeExternalUrl(target) {
+  if (typeof target !== 'string') return false;
+  return /^https?:\/\//i.test(target);
+}
+
+function isAppFileUrl(target) {
+  try {
+    const filePath = fileURLToPath(target);
+    const rel = path.relative(__dirname, filePath);
+    return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+  } catch (e) {
+    return false;
+  }
+}
+
+function hardenWebContents(contents) {
+  contents.setWindowOpenHandler(({ url }) => {
+    if (isSafeExternalUrl(url)) shell.openExternal(url);
+    return { action: 'deny' };
+  });
+  contents.on('will-navigate', (event, url) => {
+    if (isAppFileUrl(url)) return;
+    event.preventDefault();
+    if (isSafeExternalUrl(url)) shell.openExternal(url);
+  });
+}
 
 const enabledFeatures = [];
 if (process.platform === 'linux') {
@@ -80,6 +107,10 @@ function runGUI() {
       mainWindow.show();
       mainWindow.focus();
     }
+  });
+
+  app.on('web-contents-created', (event, contents) => {
+    hardenWebContents(contents);
   });
   let serverPort = PORT;
   let tray = null;
@@ -226,11 +257,6 @@ function runGUI() {
         require('./updater').initUpdater(() => mainWindow);
       });
     }
-
-    mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-      shell.openExternal(url);
-      return { action: 'deny' };
-    });
 
     mainWindow.on('minimize', () => {
       if (mainWindow && !mainWindow.isDestroyed()) {
