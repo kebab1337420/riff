@@ -1,6 +1,11 @@
 const { contextBridge, ipcRenderer, webFrame } = require('electron');
 
+
 contextBridge.exposeInMainWorld('electronAPI', {
+  serverToken: (() => {
+    const arg = process.argv.find((a) => a.startsWith('--riff-token='));
+    return arg ? arg.slice('--riff-token='.length) : '';
+  })(),
   minimizeWindow: () => ipcRenderer.send('window-minimize'),
   maximizeWindow: () => ipcRenderer.send('window-maximize'),
   closeWindow: () => ipcRenderer.send('window-close'),

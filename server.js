@@ -6,9 +6,93 @@ const path = require('path');
 const os = require('os');
 const { spawn } = require("child_process");
 const { StringDecoder } = require("string_decoder");
+const dns = require('dns');
+const net = require('net');
 
 const PORT = 38472;
 const { CACHE_DIR, CUSTOM_LYRICS_DIR, LYRICS_DIR, THUMBNAILS_DIR, METADATA_PATH, LIBRARY_DIR, LIBRARY_PATH, ytDlpCommand, resolveDownloadDir } = require('./platform');
+
+const MAX_BODY_BYTES = 2 * 1024 * 1024;
+const SAFE_MEDIA_URL = /^https?:\/\//i;
+
+function isSafeMediaUrl(value) {
+  return typeof value === 'string' && SAFE_MEDIA_URL.test(value);
+}
+
+function ipv4IsPrivate(a, b) {
+  if (a === 0 || a === 10 || a === 127) return true;
+  if (a === 169 && b === 254) return true;
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  if (a === 192 && b === 168) return true;
+  if (a === 192 && b === 0) return true;
+  if (a === 198 && (b === 18 || b === 19)) return true;
+  if (a === 100 && b >= 64 && b <= 127) return true;
+  if (a >= 224) return true;
+  return false;
+}
+
+function isPrivateIp(address) {
+  const kind = net.isIP(address);
+  if (kind === 4) {
+    const p = address.split('.').map(Number);
+    return ipv4IsPrivate(p[0], p[1]);
+  }
+  if (kind === 6) {
+    const h = address.toLowerCase();
+    if (h === '::' || h === '::1') return true;
+    if (h.startsWith('fe8') || h.startsWith('fe9') || h.startsWith('fea') || h.startsWith('feb')) return true;
+    if (h.startsWith('fc') || h.startsWith('fd')) return true;
+    const mapped = h.match(/^::ffff:(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+    if (mapped) return ipv4IsPrivate(Number(mapped[1]), Number(mapped[2]));
+    return false;
+  }
+  return true;
+}
+
+function normalizeNumericHost(h) {
+  if (/^\d+$/.test(h) && h.length < 11) {
+    const n = Number(h);
+    if (n >= 0 && n <= 0xffffffff) {
+      return [(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255].join('.');
+    }
+  }
+  const hex = h.match(/^0x([0-9a-f]+)$/);
+  if (hex) {
+    const n = parseInt(hex[1], 16);
+    if (n >= 0 && n <= 0xffffffff) {
+      return [(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255].join('.');
+    }
+  }
+  return null;
+}
+
+async function isPrivateHost(hostname) {
+  let host = (hostname || '').toLowerCase().replace(/^\[|\]$/g, '');
+  if (!host) return true;
+  if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local') || host.endsWith('.internal')) return true;
+  const numeric = normalizeNumericHost(host);
+  if (numeric) host = numeric;
+  if (net.isIP(host)) return isPrivateIp(host);
+  try {
+    const addrs = await dns.promises.lookup(host, { all: true });
+    if (!addrs.length) return true;
+    return addrs.some((a) => isPrivateIp(a.address));
+  } catch (e) {
+    return true;
+  }
+}
+
+function streamFileToResponse(stream, res) {
+  stream.on('error', () => {
+    if (!res.headersSent) {
+      try { res.writeHead(500); } catch (e) {}
+    }
+    try { res.end('Error reading file'); } catch (e) {}
+    try { stream.destroy(); } catch (e) {}
+  });
+  res.on('close', () => { try { stream.destroy(); } catch (e) {} });
+  stream.pipe(res);
+}
 
 if (!fs.existsSync(CACHE_DIR)) fs.mkdirSync(CACHE_DIR, { recursive: true });
 if (!fs.existsSync(CUSTOM_LYRICS_DIR)) fs.mkdirSync(CUSTOM_LYRICS_DIR, { recursive: true });
@@ -560,7 +644,7 @@ function executeYtDlp(args, timeoutMs = 25000) {
 
     proc.on('close', (code) => {
       if (timer) clearTimeout(timer);
-      if (code === 0 || stdout.trim().length > 0) {
+      if (code === 0) {
         resolve(stdout);
       } else {
         reject(new Error(stderr || `yt-dlp exited with code ${code}`));
@@ -667,6 +751,7 @@ async function prefetchTrack(trackUrl, trackId, platform) {
     if (platform === 'youtube' && (!trackUrl || !trackUrl.startsWith('http')) && cleanId) {
       trackUrl = `https://www.youtube.com/watch?v=${cleanId}`;
     }
+    if (!isSafeMediaUrl(trackUrl)) return;
     const args = [
       '--no-config',
       '-g',
@@ -679,7 +764,7 @@ async function prefetchTrack(trackUrl, trackId, platform) {
     if (platform === 'youtube') {
       args.push('--extractor-args', 'youtube:player_client=android');
     }
-    args.push(trackUrl);
+    args.push('--', trackUrl);
 
     const raw = await executeYtDlp(args, 18000);
     const lines = raw.trim().split('\n').filter(l => l.startsWith('http'));
@@ -1050,16 +1135,18 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
 
   let streamUrl = null;
 
-  try {
-    const args = ['--no-config', '-g', '--no-warnings', '--no-playlist', '--no-check-certificates', '-f', 'ba/b'];
-    if (platform === 'youtube') {
-      args.push('--extractor-args', 'youtube:player_client=android');
-    }
-    args.push(trackUrl);
-    const raw = await executeYtDlp(args, 18000);
-    const lines = raw.trim().split('\n').map(l => l.trim()).filter(l => l.startsWith('http'));
-    if (lines.length > 0) streamUrl = lines[0];
-  } catch (e) {}
+  if (isSafeMediaUrl(trackUrl)) {
+    try {
+      const args = ['--no-config', '-g', '--no-warnings', '--no-playlist', '--no-check-certificates', '-f', 'ba/b'];
+      if (platform === 'youtube') {
+        args.push('--extractor-args', 'youtube:player_client=android');
+      }
+      args.push('--', trackUrl);
+      const raw = await executeYtDlp(args, 18000);
+      const lines = raw.trim().split('\n').map(l => l.trim()).filter(l => l.startsWith('http'));
+      if (lines.length > 0) streamUrl = lines[0];
+    } catch (e) {}
+  }
 
   if (!streamUrl && (title || artist || trackUrl)) {
     try {
@@ -1227,7 +1314,7 @@ async function handleLocalTrack(req, res, trackId) {
         'Content-Type': contentType,
       };
       res.writeHead(206, head);
-      file.pipe(res);
+      streamFileToResponse(file, res);
     } else {
       const head = {
         'Content-Length': fileSize,
@@ -1235,7 +1322,7 @@ async function handleLocalTrack(req, res, trackId) {
         'Accept-Ranges': 'bytes'
       };
       res.writeHead(200, head);
-      fs.createReadStream(filePath).pipe(res);
+      streamFileToResponse(fs.createReadStream(filePath), res);
     }
   } catch (e) {
     res.writeHead(500);
@@ -1285,7 +1372,7 @@ async function handleLibraryFile(req, res, trackId) {
         'Content-Type': contentType,
       };
       res.writeHead(206, head);
-      file.pipe(res);
+      streamFileToResponse(file, res);
     } else {
       const head = {
         'Content-Length': fileSize,
@@ -1293,7 +1380,7 @@ async function handleLibraryFile(req, res, trackId) {
         'Accept-Ranges': 'bytes'
       };
       res.writeHead(200, head);
-      fs.createReadStream(filePath).pipe(res);
+      streamFileToResponse(fs.createReadStream(filePath), res);
     }
   } catch (e) {
     res.writeHead(404);
@@ -1332,7 +1419,7 @@ async function handleDownloadedTrack(req, res, name) {
         'Content-Type': contentType,
       };
       res.writeHead(206, head);
-      file.pipe(res);
+      streamFileToResponse(file, res);
     } else {
       const head = {
         'Content-Length': fileSize,
@@ -1340,7 +1427,7 @@ async function handleDownloadedTrack(req, res, name) {
         'Accept-Ranges': 'bytes'
       };
       res.writeHead(200, head);
-      fs.createReadStream(filePath).pipe(res);
+      streamFileToResponse(fs.createReadStream(filePath), res);
     }
   } catch (e) {
     res.writeHead(404);
@@ -1348,64 +1435,68 @@ async function handleDownloadedTrack(req, res, name) {
   }
 }
 
-function isPrivateHost(hostname) {
-  const host = (hostname || '').toLowerCase().replace(/^\[|\]$/g, '');
-  if (!host) return true;
-  if (host === 'localhost' || host === '::1' || host === '0.0.0.0') return true;
-  if (host.endsWith('.localhost') || host.endsWith('.local') || host.endsWith('.internal')) return true;
-  const m = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
-  if (m) {
-    const a = Number(m[1]);
-    const b = Number(m[2]);
-    if (a === 0 || a === 10 || a === 127) return true;
-    if (a === 169 && b === 254) return true;
-    if (a === 172 && b >= 16 && b <= 31) return true;
-    if (a === 192 && b === 168) return true;
-    if (a === 100 && b >= 64 && b <= 127) return true;
-    return false;
-  }
-  if (host.includes(':')) return true;
-  return false;
-}
-
-function handleAudioProxy(req, res, targetUrl) {
+async function handleAudioProxy(req, res, targetUrl) {
   if (!targetUrl) {
     res.writeHead(400);
     return res.end('Missing url');
   }
 
   try {
-    const parsed = new URL(targetUrl);
+    let parsed;
+    try {
+      parsed = new URL(targetUrl);
+    } catch (e) {
+      res.writeHead(400);
+      return res.end('Invalid url');
+    }
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
       res.writeHead(400);
       return res.end('Unsupported protocol');
     }
-    if (isPrivateHost(parsed.hostname)) {
+    if (await isPrivateHost(parsed.hostname)) {
       res.writeHead(403);
       return res.end('Blocked target');
     }
     const client = parsed.protocol === 'https:' ? https : http;
 
-    const headers = { ...req.headers, host: parsed.host };
-    delete headers['connection'];
+    const forward = { host: parsed.host };
+    for (const key of ['range', 'accept', 'accept-language', 'user-agent']) {
+      if (req.headers[key] !== undefined) forward[key] = req.headers[key];
+    }
 
     const proxyReq = client.request(targetUrl, {
       method: req.method,
-      headers: headers
+      headers: forward
     }, (proxyRes) => {
+      if (res.writableEnded) {
+        proxyRes.destroy();
+        return;
+      }
       res.writeHead(proxyRes.statusCode, proxyRes.headers);
+      proxyRes.on('error', () => { try { res.destroy(); } catch (e) {} });
       proxyRes.pipe(res);
     });
 
-    proxyReq.on('error', (e) => {
-      if (!res.headersSent) res.writeHead(502);
-      res.end(e.message);
+    proxyReq.setTimeout(60000, () => {
+      proxyReq.destroy(new Error('Proxy timeout'));
     });
 
+    proxyReq.on('error', (e) => {
+      if (!res.headersSent) {
+        res.writeHead(502);
+        res.end('Proxy error');
+      } else {
+        try { res.destroy(); } catch (err) {}
+      }
+    });
+
+    req.on('error', () => { try { proxyReq.destroy(); } catch (e) {} });
     req.pipe(proxyReq);
   } catch (e) {
-    res.writeHead(500);
-    res.end(e.message);
+    if (!res.headersSent) {
+      res.writeHead(500);
+      res.end('Proxy failed');
+    }
   }
 }
 
@@ -1471,13 +1562,15 @@ async function handleDownload(req, res, trackUrl, title, artist, format = 'mp3',
   const cleanTitle = sanitizeFilename(title || 'untitled');
   const cleanArtist = sanitizeFilename(artist || 'unknown artist');
   const validFormats = ['mp3', 'm4a', 'flac', 'opus', 'wav'];
-  const ext = validFormats.includes(format.toLowerCase()) ? format.toLowerCase() : 'mp3';
+  const safeFormat = String(format || '').toLowerCase();
+  const ext = validFormats.includes(safeFormat) ? safeFormat : 'mp3';
+  const safeQuality = /^\d+$/.test(String(quality)) ? String(quality) : '0';
   const outFilename = `${cleanArtist} - ${cleanTitle}.${ext}`;
   const outPath = path.join(downloadsDir, outFilename);
   const tempTemplate = path.join(downloadsDir, `${cleanArtist} - ${cleanTitle}.%(ext)s`);
 
   let targetUrl = trackUrl;
-  if (!targetUrl || targetUrl.includes('deezer.com')) {
+  if (!isSafeMediaUrl(targetUrl) || targetUrl.includes('deezer.com')) {
     targetUrl = `ytsearch1:${cleanArtist} ${cleanTitle} official audio`;
   }
 
@@ -1487,11 +1580,12 @@ async function handleDownload(req, res, trackUrl, title, artist, format = 'mp3',
     '--no-warnings',
     '-x',
     '--audio-format', ext,
-    '--audio-quality', quality.toString(),
+    '--audio-quality', safeQuality,
     '--embed-thumbnail',
     '--add-metadata',
     '-o', tempTemplate,
     '--extractor-args', 'youtube:player_client=android_creator,android,web',
+    '--',
     targetUrl
   ];
 
@@ -1502,7 +1596,6 @@ async function handleDownload(req, res, trackUrl, title, artist, format = 'mp3',
     res.end(JSON.stringify({
       success: true,
       filename: outFilename,
-      path: outPath,
       directory: downloadsDir
     }));
   } catch (err) {
@@ -1513,8 +1606,9 @@ async function handleDownload(req, res, trackUrl, title, artist, format = 'mp3',
         '--no-warnings',
         '-x',
         '--audio-format', ext,
-        '--audio-quality', quality.toString(),
+        '--audio-quality', safeQuality,
         '-o', tempTemplate,
+        '--',
         targetUrl
       ];
       await executeYtDlp(fallbackArgs, 60000);
@@ -1523,7 +1617,6 @@ async function handleDownload(req, res, trackUrl, title, artist, format = 'mp3',
       res.end(JSON.stringify({
         success: true,
         filename: outFilename,
-        path: outPath,
         directory: downloadsDir
       }));
     } catch (e2) {
@@ -1594,6 +1687,49 @@ function fetchLyricsDirect(title, artist) {
 }
 
 const crypto = require('crypto');
+
+const SERVER_TOKEN = crypto.randomBytes(24).toString('hex');
+
+const TOKEN_PROTECTED_ROUTES = new Set([
+  '/api/state',
+  '/api/translate',
+  '/api/vibe',
+  '/api/search',
+  '/api/artist',
+  '/api/lyrics',
+  '/api/download',
+  '/api/spotify-import',
+  '/api/prefetch',
+  '/api/check-cache',
+  '/api/stream-info',
+  '/api/track-analysis',
+  '/api/tools-status',
+  '/api/tools-install',
+  '/api/library',
+  '/api/library-add',
+  '/api/library-update',
+  '/api/library-remove',
+  '/api/offline-library',
+  '/api/offline-delete',
+  '/api/clear-offline-library',
+  '/api/save-custom-lyrics'
+]);
+
+function getServerToken() {
+  return SERVER_TOKEN;
+}
+
+function tokenMatches(provided) {
+  if (typeof provided !== 'string') return false;
+  const expected = Buffer.from(SERVER_TOKEN);
+  const given = Buffer.from(provided);
+  if (given.length !== expected.length) return false;
+  try {
+    return crypto.timingSafeEqual(given, expected);
+  } catch (e) {
+    return false;
+  }
+}
 
 function legacyCustomLyricsPath(title, artist) {
   const safeName = `${(artist || 'unknown').replace(/[^\w\s-]/g, '_')}_${(title || 'untitled').replace(/[^\w\s-]/g, '_')}.lrc`.toLowerCase().replace(/\s+/g, '_');
@@ -1684,7 +1820,7 @@ async function handleLyrics(req, res, title, artist, allowOnline = true) {
 
 async function handleSaveCustomLyrics(req, res, title, artist) {
   let body = '';
-  req.on('data', chunk => body += chunk);
+  req.on('data', chunk => { if (res.writableEnded) return; body += chunk; if (body.length > MAX_BODY_BYTES) { body = ''; req.removeAllListeners('data'); req.removeAllListeners('end'); res.writeHead(413, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ success: false, error: 'payload too large' })); req.resume(); } });
   req.on('end', async () => {
     try {
       const { lyrics } = JSON.parse(body);
@@ -1937,9 +2073,14 @@ const server = http.createServer(async (req, res) => {
 
   const parsedUrl = url.parse(req.url, true);
 
+  if (TOKEN_PROTECTED_ROUTES.has(parsedUrl.pathname) && !tokenMatches(req.headers['x-riff-token'])) {
+    res.writeHead(403, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({ success: false, error: 'forbidden' }));
+  }
+
   if (parsedUrl.pathname === '/api/translate' && req.method === 'POST') {
     let body = '';
-    req.on('data', chunk => body += chunk);
+    req.on('data', chunk => { if (res.writableEnded) return; body += chunk; if (body.length > MAX_BODY_BYTES) { body = ''; req.removeAllListeners('data'); req.removeAllListeners('end'); res.writeHead(413, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ success: false, error: 'payload too large' })); req.resume(); } });
     req.on('end', () => {
       const payload = safeJsonParse(body, {});
       const texts = payload.texts || payload.lines || [];
@@ -1951,7 +2092,7 @@ const server = http.createServer(async (req, res) => {
 
   if (parsedUrl.pathname === '/api/state' && req.method === 'POST') {
     let body = '';
-    req.on('data', chunk => body += chunk);
+    req.on('data', chunk => { if (res.writableEnded) return; body += chunk; if (body.length > MAX_BODY_BYTES) { body = ''; req.removeAllListeners('data'); req.removeAllListeners('end'); res.writeHead(413, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ success: false, error: 'payload too large' })); req.resume(); } });
     req.on('end', () => {
       try {
         const state = JSON.parse(body);
@@ -2002,7 +2143,7 @@ const server = http.createServer(async (req, res) => {
 
   if (parsedUrl.pathname === '/api/vibe' && req.method === 'POST') {
     let body = '';
-    req.on('data', chunk => body += chunk);
+    req.on('data', chunk => { if (res.writableEnded) return; body += chunk; if (body.length > MAX_BODY_BYTES) { body = ''; req.removeAllListeners('data'); req.removeAllListeners('end'); res.writeHead(413, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ success: false, error: 'payload too large' })); req.resume(); } });
     req.on('end', () => {
       const payload = safeJsonParse(body, {});
       handleVibeRecommendations(req, res, payload);
@@ -2075,7 +2216,7 @@ const server = http.createServer(async (req, res) => {
 
   if (parsedUrl.pathname === '/api/library-add' && req.method === 'POST') {
     let body = '';
-    req.on('data', chunk => body += chunk);
+    req.on('data', chunk => { if (res.writableEnded) return; body += chunk; if (body.length > MAX_BODY_BYTES) { body = ''; req.removeAllListeners('data'); req.removeAllListeners('end'); res.writeHead(413, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ success: false, error: 'payload too large' })); req.resume(); } });
     req.on('end', () => {
       try {
         const payload = JSON.parse(body || '{}');
@@ -2123,7 +2264,7 @@ const server = http.createServer(async (req, res) => {
 
   if (parsedUrl.pathname === '/api/library-update' && req.method === 'POST') {
     let body = '';
-    req.on('data', chunk => body += chunk);
+    req.on('data', chunk => { if (res.writableEnded) return; body += chunk; if (body.length > MAX_BODY_BYTES) { body = ''; req.removeAllListeners('data'); req.removeAllListeners('end'); res.writeHead(413, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ success: false, error: 'payload too large' })); req.resume(); } });
     req.on('end', () => {
       try {
         const payload = JSON.parse(body || '{}');
@@ -2164,7 +2305,7 @@ const server = http.createServer(async (req, res) => {
 
   if (parsedUrl.pathname === '/api/library-remove' && req.method === 'POST') {
     let body = '';
-    req.on('data', chunk => body += chunk);
+    req.on('data', chunk => { if (res.writableEnded) return; body += chunk; if (body.length > MAX_BODY_BYTES) { body = ''; req.removeAllListeners('data'); req.removeAllListeners('end'); res.writeHead(413, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ success: false, error: 'payload too large' })); req.resume(); } });
     req.on('end', () => {
       try {
         const payload = JSON.parse(body || '{}');
@@ -2196,7 +2337,7 @@ const server = http.createServer(async (req, res) => {
     const thumbPath = path.join(THUMBNAILS_DIR, `${cleanId}.jpg`);
     if (fs.existsSync(thumbPath)) {
       res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=31536000' });
-      return fs.createReadStream(thumbPath).pipe(res);
+      return streamFileToResponse(fs.createReadStream(thumbPath), res);
     }
     res.writeHead(404);
     return res.end('Thumbnail not cached');
@@ -2237,7 +2378,7 @@ const server = http.createServer(async (req, res) => {
   if (parsedUrl.pathname === '/api/track-analysis') {
     if (req.method === 'POST') {
       let body = '';
-      req.on('data', chunk => body += chunk);
+      req.on('data', chunk => { if (res.writableEnded) return; body += chunk; if (body.length > MAX_BODY_BYTES) { body = ''; req.removeAllListeners('data'); req.removeAllListeners('end'); res.writeHead(413, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ success: false, error: 'payload too large' })); req.resume(); } });
       req.on('end', () => {
         try {
           const payload = JSON.parse(body || '{}');
@@ -2340,7 +2481,7 @@ function startServer(port = PORT) {
   });
 }
 
-module.exports = { startServer, PORT };
+module.exports = { startServer, PORT, getServerToken };
 
 if (require.main === module) {
   startServer();

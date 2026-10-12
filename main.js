@@ -65,7 +65,7 @@ if (process.argv.includes('lyrics') || process.argv.includes('--lyrics')) {
 }
 
 function runGUI() {
-  const { startServer, PORT } = require('./server');
+  const { startServer, PORT, getServerToken } = require('./server');
   const discordRPC = require('./discord-rpc');
 
   let mainWindow = null;
@@ -195,6 +195,7 @@ function runGUI() {
                                    useContentSize: true,
                                    webPreferences: {
                                      preload: path.join(__dirname, 'preload.js'),
+                                   additionalArguments: [`--riff-token=${getServerToken()}`],
                                    nodeIntegration: false,
                                    contextIsolation: true,
                                    webSecurity: false,
