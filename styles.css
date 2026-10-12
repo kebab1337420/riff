@@ -3554,6 +3554,19 @@ body.is-window-resizing .platform-switch-container {
   color: #f57c00;
 }
 
+.riff-toast.wide {
+  max-width: 720px;
+  border-radius: 16px;
+  padding: 12px 18px;
+}
+.riff-toast.wide .toast-text {
+  max-width: none;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  line-height: 1.4;
+}
+
 .riff-toast.error {
   background: var(--md-sys-color-error-container);
   color: var(--md-sys-color-on-error-container);

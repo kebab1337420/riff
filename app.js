@@ -97,9 +97,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   const toastQueue = [];
   let isToastActive = false;
 
-  function showToast(message, type = 'info') {
+  function showToast(message, type = 'info', duration = null) {
     if (!message) return;
-    toastQueue.push({ message, type });
+    toastQueue.push({ message, type, duration });
     if (!isToastActive) {
       processToastQueue();
     }
@@ -111,7 +111,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       return;
     }
     isToastActive = true;
-    const { message, type } = toastQueue.shift();
+    const { message, type, duration } = toastQueue.shift();
     const container = document.getElementById('toast-container');
     if (!container) {
       isToastActive = false;
@@ -119,7 +119,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     const toast = document.createElement('div');
-    toast.className = `riff-toast ${type} liquid-content-stagger`;
+    toast.className = `riff-toast ${type}${duration ? ' wide' : ''} liquid-content-stagger`;
 
     let iconSvg = '';
     if (type === 'error') {
@@ -144,7 +144,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     let dismissed = false;
     let timer = null;
-    let remaining = 3500;
+    let remaining = duration || 3500;
     let startTimestamp = Date.now();
 
     const dismiss = () => {
@@ -5498,7 +5498,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       refreshStacks();
       if (!soundPersistenceEnabled && !localStorage.getItem('riff_sound_save_warned')) {
         localStorage.setItem('riff_sound_save_warned', '1');
-        showToast('Sound settings are not saved automatically. Enable "Save sound settings" in Settings to keep them.', 'warning');
+        showToast('Sound settings are not saved automatically. Enable "Save sound settings" in Settings to keep them.', 'warning', 9000);
       }
     });
   }
