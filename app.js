@@ -284,8 +284,16 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   const DEFAULT_AUDIO_SETTINGS = { speed: 1.0, speedPitch: 1.0, pitch: 0, reverb: 0, distortion: 0, volume: 1.0, echo: 0, eq: { low: 0, mid: 0, high: 0 } };
   const DEFAULT_HQ_SETTINGS = { engine: 'hqmusic-3', preset: 'studio', vocal: 0, air: 0, bass: 0 };
+  let soundPersistenceEnabled = localStorage.getItem('riff_persist_sound_settings') === '1';
 
   function loadSoundSettings() {
+    if (!soundPersistenceEnabled) {
+      return {
+        audioSettings: { ...DEFAULT_AUDIO_SETTINGS, eq: { ...DEFAULT_AUDIO_SETTINGS.eq } },
+        hqEnabled: false,
+        hqSettings: { ...DEFAULT_HQ_SETTINGS }
+      };
+    }
     const savedAudio = safeJson('riff_audio_settings', null);
     const savedHq = safeJson('riff_hq_settings', null);
     const audioObj = savedAudio && typeof savedAudio === 'object' ? savedAudio : {};
@@ -327,7 +335,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     isRightPanelOpen: true,
     lyricsMode: 'line',
     uiScale: savedScale,
-    activePresetId: localStorage.getItem('riff_active_preset') || 'p_default',
+    activePresetId: soundPersistenceEnabled ? (localStorage.getItem('riff_active_preset') || 'p_default') : 'p_default',
     themeMode: localStorage.getItem('riff_theme_mode') || 'dark',
     paletteStyle: localStorage.getItem('riff_palette_style') || 'classic',
     meshBrightness: parseInt(localStorage.getItem('riff_mesh_brightness') || '100', 10),
@@ -1649,6 +1657,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   let soundSettingsSaveTimer = null;
   function persistSoundSettings() {
+    if (!soundPersistenceEnabled) return;
     if (soundSettingsSaveTimer) clearTimeout(soundSettingsSaveTimer);
     soundSettingsSaveTimer = setTimeout(() => {
       soundSettingsSaveTimer = null;
@@ -5277,6 +5286,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
+  const btnPersistSound = document.getElementById('btn-persist-sound-settings');
+  if (btnPersistSound) {
+    btnPersistSound.classList.toggle('active', soundPersistenceEnabled);
+    btnPersistSound.addEventListener('click', () => {
+      const next = !btnPersistSound.classList.contains('active');
+      btnPersistSound.classList.toggle('active', next);
+      soundPersistenceEnabled = next;
+      localStorage.setItem('riff_persist_sound_settings', next ? '1' : '0');
+      if (next) persistSoundSettings();
+    });
+  }
+
   if (el.btnPlayPause) el.btnPlayPause.addEventListener('click', togglePlayPause);
   if (el.btnNext) el.btnNext.addEventListener('click', playNext);
   if (el.btnPrev) el.btnPrev.addEventListener('click', playPrev);
@@ -5475,6 +5496,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (tempoTab) tempoTab.click();
       if (el.audioSettingsModal) openModal(el.audioSettingsModal);
       refreshStacks();
+      if (!soundPersistenceEnabled && !localStorage.getItem('riff_sound_save_warned')) {
+        localStorage.setItem('riff_sound_save_warned', '1');
+        showToast('Sound settings are not saved automatically. Enable "Save sound settings" in Settings to keep them.', 'warning');
+      }
     });
   }
 
