@@ -5498,7 +5498,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       refreshStacks();
       if (!soundPersistenceEnabled && !localStorage.getItem('riff_sound_save_warned')) {
         localStorage.setItem('riff_sound_save_warned', '1');
-        showToast('Sound settings are not saved automatically. Enable "Save sound settings" in Settings to keep them.', 'warning', 9000);
+        showToast('Sound settings are not saved automatically. Enable "Save sound settings" in Settings to keep them.', 'error', 15000);
       }
     });
   }
