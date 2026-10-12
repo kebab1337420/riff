@@ -7193,6 +7193,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || !!target.isContentEditable;
   }
 
+  function isInteractiveTarget(target) {
+    if (!target || typeof target.closest !== 'function') return false;
+    return !!target.closest('button, a[href], [role="button"], select, summary');
+  }
+
   function adjustVolume(delta) {
     state.volume = Math.max(0, Math.min(1, Math.round((state.volume + delta) * 100) / 100));
     state.isMuted = false;
@@ -7204,7 +7209,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   window.addEventListener('keyup', (e) => {
-    if (e.code === 'Space' && !isTextInput(e.target)) {
+    if (e.code === 'Space' && !isTextInput(e.target) && !isInteractiveTarget(e.target)) {
       e.preventDefault();
     }
   }, true);
@@ -7242,6 +7247,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     if (e.code === 'Space') {
+      if (isInteractiveTarget(e.target)) return;
       e.preventDefault();
       if (syncState && syncState.active && syncState.currentIndex < syncState.lines.length) {
         handleSyncLineClick(syncState.currentIndex);

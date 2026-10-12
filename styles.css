@@ -4162,7 +4162,11 @@ button::after, .chip-btn::after, .mix-card::after, .track-row::after, .rail-icon
   z-index: 1;
 }
 
-*:focus, *:focus-visible { outline: none !important; }
+*:focus:not(:focus-visible) { outline: none; }
+*:focus-visible {
+  outline: 2px solid var(--md-sys-color-primary, #6750a4) !important;
+  outline-offset: 2px;
+}
 
 .cache-backdrop {
   backdrop-filter: blur(20px) saturate(180%);
