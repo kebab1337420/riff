@@ -2308,6 +2308,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   let crossfadeTriggered = false;
   let crossfadeFadeInPending = false;
+  let crossfadeSecCache = null;
+
+  function getCrossfadeSec() {
+    if (crossfadeSecCache === null) {
+      crossfadeSecCache = parseInt(localStorage.getItem('riff_crossfade') || '0', 10) || 0;
+    }
+    return crossfadeSecCache;
+  }
 
   async function playTrack(track, queueList = null, startIndex = -1, context = null) {
     if (!track || !el.nativeAudio) return;
@@ -3396,7 +3404,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (audioEngine) audioEngine._applyMasterVolume();
       if (crossfadeFadeInPending) {
         crossfadeFadeInPending = false;
-        const X = parseInt(localStorage.getItem('riff_crossfade') || '0', 10);
+        const X = getCrossfadeSec();
         if (X > 0 && audioEngine) audioEngine.fadeIn(X / 2);
       }
       sendDiscordRpcUpdate(state.currentTrack, true);
@@ -3452,7 +3460,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const cur = el.nativeAudio.currentTime || 0;
       const dur = el.nativeAudio.duration || (state.currentTrack ? state.currentTrack.duration : 0);
 
-      const X = parseInt(localStorage.getItem('riff_crossfade') || '0', 10);
+      const X = getCrossfadeSec();
       if (X > 0 && !crossfadeTriggered && !state.isRepeat && dur > X && cur >= dur - X && (!audioEngine || !audioEngine.isLiveStream(el.nativeAudio))) {
         crossfadeTriggered = true;
         crossfadeFadeInPending = true;
@@ -6793,7 +6801,19 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
   enhanceSliders();
   let sliderRaf = 0;
-  new MutationObserver(() => { if (sliderRaf) return; sliderRaf = requestAnimationFrame(() => { sliderRaf = 0; enhanceSliders(); }); }).observe(document.body, { childList: true, subtree: true });
+  new MutationObserver((mutations) => {
+    let relevant = false;
+    for (const m of mutations) {
+      for (const node of m.addedNodes) {
+        if (node.nodeType !== 1) continue;
+        if ((node.matches && node.matches('input[type="range"]')) || (node.querySelector && node.querySelector('input[type="range"]'))) { relevant = true; break; }
+      }
+      if (relevant) break;
+    }
+    if (!relevant) return;
+    if (sliderRaf) return;
+    sliderRaf = requestAnimationFrame(() => { sliderRaf = 0; enhanceSliders(); });
+  }).observe(document.body, { childList: true, subtree: true });
 
   (function initHueSegments() {
     const input = document.getElementById('slider-theme-hue');
@@ -7171,7 +7191,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
   let swRaf = 0;
-  new MutationObserver(() => { if (swRaf) return; swRaf = requestAnimationFrame(() => { swRaf = 0; decorateSwitches(); }); }).observe(document.body, { childList: true, subtree: true });
+  new MutationObserver((mutations) => {
+    let relevant = false;
+    for (const m of mutations) {
+      for (const node of m.addedNodes) {
+        if (node.nodeType !== 1) continue;
+        if ((node.matches && node.matches('.thumb, .effect-switch-btn')) || (node.querySelector && node.querySelector('.effect-switch-btn .thumb:not(.has-icon)'))) { relevant = true; break; }
+      }
+      if (relevant) break;
+    }
+    if (!relevant) return;
+    if (swRaf) return;
+    swRaf = requestAnimationFrame(() => { swRaf = 0; decorateSwitches(); });
+  }).observe(document.body, { childList: true, subtree: true });
   decorateSwitches();
 
   const settingWinMediaKeys = document.getElementById('setting-win-media-keys');
@@ -7265,13 +7297,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   const sliderCrossfade = document.getElementById('slider-crossfade');
   const valCrossfade = document.getElementById('val-crossfade');
   if (sliderCrossfade) {
-    const cf = parseInt(localStorage.getItem('riff_crossfade') || '0', 10);
+    const cf = getCrossfadeSec();
     sliderCrossfade.value = cf;
     if (valCrossfade) valCrossfade.textContent = cf > 0 ? `${cf}s` : 'Off';
     sliderCrossfade.addEventListener('input', (e) => {
       const v = parseInt(e.target.value, 10);
       if (valCrossfade) valCrossfade.textContent = v > 0 ? `${v}s` : 'Off';
       localStorage.setItem('riff_crossfade', String(v));
+      crossfadeSecCache = v;
     });
   }
 
