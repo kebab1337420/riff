@@ -1098,6 +1098,23 @@
                 </div>
               </div>
             </div>
+
+            <div class="setting-item" id="download-queue-item">
+              <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                  <div style="width: 32px; height: 32px; border-radius: 50%; background: var(--md-sys-color-surface-container-high); display: flex; align-items: center; justify-content: center; color: var(--md-sys-color-primary);">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  </div>
+                  <div style="display: flex; flex-direction: column; min-width: 0;">
+                    <span class="setting-name">Downloads</span>
+                    <span id="download-queue-summary" style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">No active downloads</span>
+                  </div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
+                  <button class="btn-outline-pill" id="btn-view-downloads" style="padding: 6px 14px; font-size: calc(12px * var(--font-scale, 1));">View</button>
+                </div>
+              </div>
+            </div>
             </div>
           </div>
 
@@ -2137,6 +2154,14 @@
           <label class="effects-toggle-label" for="download-apply-effects">Apply current audio effects (Preset/High Quality)</label>
           <input type="checkbox" id="download-apply-effects" class="m3-switch-input">
         </div>
+      </div>
+
+      <div class="download-section" id="download-queue-section" style="display:none;">
+        <div class="download-queue-header">
+          <span class="download-section-label">Downloads</span>
+          <button class="btn-text-pill" id="btn-clear-downloads">Clear finished</button>
+        </div>
+        <div class="download-queue-list" id="download-queue-list"></div>
       </div>
 
       <div class="download-modal-actions">

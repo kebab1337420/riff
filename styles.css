@@ -3460,6 +3460,124 @@ body.is-window-resizing .platform-switch-container {
   margin-top: 12px;
 }
 
+.download-queue-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.download-queue-header .download-section-label {
+  margin-bottom: 10px;
+}
+
+.btn-text-pill {
+  background: transparent;
+  border: none;
+  color: var(--md-sys-color-primary);
+  font-size: calc(12px * var(--font-scale, 1));
+  font-weight: 500;
+  cursor: pointer;
+  padding: 6px 10px;
+  border-radius: 10px;
+  white-space: nowrap;
+  transition: background-color var(--transition-fast);
+}
+
+.btn-text-pill:hover {
+  background: color-mix(in srgb, var(--md-sys-color-primary) 12%, transparent);
+}
+
+.download-queue-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.download-queue-item {
+  background: var(--md-sys-color-surface-container-high);
+  border-radius: 14px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.download-queue-item-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.download-queue-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.download-queue-name {
+  font-size: calc(14px * var(--font-scale, 1));
+  font-weight: 500;
+  color: var(--md-sys-color-on-surface);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.download-queue-meta {
+  font-size: calc(12px * var(--font-scale, 1));
+  color: var(--md-sys-color-outline);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.download-queue-cancel {
+  background: transparent;
+  border: none;
+  color: var(--md-sys-color-outline);
+  cursor: pointer;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background-color var(--transition-fast), color var(--transition-fast);
+}
+
+.download-queue-cancel:hover {
+  background: rgba(255, 84, 73, 0.1);
+  color: var(--md-sys-color-error);
+}
+
+.download-queue-bar {
+  height: 5px;
+  border-radius: 3px;
+  background: var(--md-sys-color-surface-container-highest);
+  overflow: hidden;
+}
+
+.download-queue-bar > i {
+  display: block;
+  height: 100%;
+  width: 0%;
+  border-radius: 3px;
+  background: var(--md-sys-color-primary);
+  transition: width 0.3s ease;
+}
+
+.download-queue-item.is-error .download-queue-bar > i {
+  background: var(--md-sys-color-error);
+}
+
+.download-queue-item.is-done .download-queue-bar > i {
+  background: var(--md-sys-color-primary);
+}
+
 @media (max-width: 600px) {
   .download-modal-actions {
     flex-direction: column;

@@ -1626,6 +1626,219 @@ async function handleDownload(req, res, trackUrl, title, artist, format = 'mp3',
   }
 }
 
+const downloadJobs = new Map();
+let activeDownloadJobId = null;
+let downloadJobSeq = 0;
+
+function buildDownloadJobArgs(job, withTags) {
+  const downloadsDir = getDownloadsDir();
+  const cleanTitle = sanitizeFilename(job.title || 'untitled');
+  const cleanArtist = sanitizeFilename(job.artist || 'unknown artist');
+  const validFormats = ['mp3', 'm4a', 'flac', 'opus', 'wav'];
+  const safeFormat = String(job.format || '').toLowerCase();
+  const ext = validFormats.includes(safeFormat) ? safeFormat : 'mp3';
+  const safeQuality = /^\d+$/.test(String(job.quality)) ? String(job.quality) : '0';
+  const outFilename = `${cleanArtist} - ${cleanTitle}.${ext}`;
+  const tempTemplate = path.join(downloadsDir, `${cleanArtist} - ${cleanTitle}.%(ext)s`);
+
+  let targetUrl = job.url;
+  if (!isSafeMediaUrl(targetUrl) || (targetUrl || '').includes('deezer.com')) {
+    targetUrl = `ytsearch1:${cleanArtist} ${cleanTitle} official audio`;
+  }
+
+  const args = [
+    '--no-playlist',
+    '--no-check-certificates',
+    '--no-warnings',
+    '--newline',
+    '--progress-template', 'download:RIFFPROG %(progress._percent_str)s|%(progress._speed_str)s|%(progress._eta_str)s',
+    '-x',
+    '--audio-format', ext,
+    '--audio-quality', safeQuality
+  ];
+  if (withTags) {
+    args.push('--embed-thumbnail', '--add-metadata');
+  }
+  args.push('-o', tempTemplate);
+  args.push('--extractor-args', 'youtube:player_client=android_creator,android,web');
+  args.push('--', targetUrl);
+  return { args, outFilename, downloadsDir };
+}
+
+function publicDownloadJob(job) {
+  return {
+    id: job.id,
+    title: job.title,
+    artist: job.artist,
+    format: job.format,
+    status: job.status,
+    progress: Math.round(job.progress || 0),
+    speed: job.speed || '',
+    eta: job.eta || '',
+    error: job.error || null,
+    filename: job.filename || null,
+    directory: job.directory || null,
+    createdAt: job.createdAt
+  };
+}
+
+function pumpDownloadQueue() {
+  if (activeDownloadJobId) return;
+  const next = [...downloadJobs.values()].find(j => j.status === 'queued');
+  if (!next) return;
+  runDownloadJob(next);
+}
+
+function runDownloadJob(job) {
+  activeDownloadJobId = job.id;
+  job.status = 'downloading';
+  job.progress = 0;
+  job.speed = '';
+  job.eta = '';
+
+  let built;
+  try {
+    built = buildDownloadJobArgs(job, job.attempts === 0);
+  } catch (e) {
+    job.status = 'error';
+    job.error = e.message;
+    activeDownloadJobId = null;
+    return pumpDownloadQueue();
+  }
+  job.outFilename = built.outFilename;
+  job.directory = built.downloadsDir;
+
+  let cmd;
+  try {
+    cmd = ytDlpCommand(built.args);
+  } catch (e) {
+    job.status = 'error';
+    job.error = e.message;
+    activeDownloadJobId = null;
+    return pumpDownloadQueue();
+  }
+
+  const proc = spawn(cmd.bin, cmd.args, { windowsHide: true });
+  job.proc = proc;
+
+  const onData = (chunk) => {
+    const text = chunk.toString('utf8');
+    const m = text.match(/RIFFPROG\s*([\d.]+)%\|([^|]*)\|([^\n|]*)/);
+    if (m) {
+      job.progress = parseFloat(m[1]) || 0;
+      job.speed = (m[2] || '').trim();
+      job.eta = (m[3] || '').trim();
+      if (job.status !== 'converting') job.status = 'downloading';
+    } else if (/\[ExtractAudio\]|\[ffmpeg\]/i.test(text)) {
+      job.status = 'converting';
+    }
+  };
+  proc.stdout.on('data', onData);
+  proc.stderr.on('data', onData);
+
+  proc.on('close', (code) => {
+    job.proc = null;
+    activeDownloadJobId = null;
+    if (job.status === 'canceled') return pumpDownloadQueue();
+    if (code === 0) {
+      job.status = 'done';
+      job.progress = 100;
+      job.filename = job.outFilename;
+      downloadsIndex = null;
+    } else if (job.attempts < 1) {
+      job.attempts++;
+      job.status = 'queued';
+      job.error = null;
+    } else {
+      job.status = 'error';
+      job.error = 'download failed';
+    }
+    pumpDownloadQueue();
+  });
+
+  proc.on('error', (err) => {
+    job.proc = null;
+    activeDownloadJobId = null;
+    if (job.status !== 'canceled') {
+      job.status = 'error';
+      job.error = err.message;
+    }
+    pumpDownloadQueue();
+  });
+}
+
+function createDownloadJob(payload) {
+  const id = `job_${Date.now().toString(36)}_${(++downloadJobSeq).toString(36)}`;
+  const job = {
+    id,
+    url: payload.url || '',
+    title: payload.title || 'untitled',
+    artist: payload.artist || 'unknown artist',
+    format: payload.format || 'mp3',
+    quality: payload.quality || '0',
+    status: 'queued',
+    progress: 0,
+    speed: '',
+    eta: '',
+    error: null,
+    attempts: 0,
+    createdAt: Date.now(),
+    proc: null,
+    outFilename: null,
+    directory: null
+  };
+  downloadJobs.set(id, job);
+  if (downloadJobs.size > 500) {
+    for (const [key, value] of downloadJobs) {
+      if (['done', 'error', 'canceled'].includes(value.status)) {
+        downloadJobs.delete(key);
+        break;
+      }
+    }
+  }
+  pumpDownloadQueue();
+  return job;
+}
+
+function cancelDownloadJob(id) {
+  const job = downloadJobs.get(id);
+  if (!job) return false;
+  if (job.status === 'queued') {
+    job.status = 'canceled';
+    return true;
+  }
+  if (job.status === 'downloading' || job.status === 'converting') {
+    job.status = 'canceled';
+    if (job.proc) {
+      try { job.proc.kill('SIGKILL'); } catch (e) {}
+    }
+    return true;
+  }
+  return false;
+}
+
+function readJsonBody(req, res, handler) {
+  let body = '';
+  req.on('data', (chunk) => {
+    body += chunk;
+    if (body.length > 65536) {
+      req.removeAllListeners('data');
+      req.removeAllListeners('end');
+      res.writeHead(413, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: false, error: 'payload too large' }));
+      req.resume();
+    }
+  });
+  req.on('end', () => {
+    try {
+      handler(JSON.parse(body || '{}'));
+    } catch (err) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: false, error: err.message }));
+    }
+  });
+}
+
 function sanitizeForLyrics(title, artist) {
   let cleanTitle = (title || '')
   .replace(/\[.*?\]|\(.*?\)/g, '')
@@ -1698,6 +1911,10 @@ const TOKEN_PROTECTED_ROUTES = new Set([
   '/api/artist',
   '/api/lyrics',
   '/api/download',
+  '/api/download-start',
+  '/api/download-jobs',
+  '/api/download-cancel',
+  '/api/download-clear',
   '/api/spotify-import',
   '/api/prefetch',
   '/api/check-cache',
@@ -2421,6 +2638,38 @@ const server = http.createServer(async (req, res) => {
     const format = parsedUrl.query.format || 'mp3';
     const quality = parsedUrl.query.quality || '0';
     return handleDownload(req, res, trackUrl, title, artist, format, quality);
+  }
+
+  if (parsedUrl.pathname === '/api/download-start' && req.method === 'POST') {
+    return readJsonBody(req, res, (payload) => {
+      const job = createDownloadJob(payload || {});
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true, id: job.id }));
+    });
+  }
+
+  if (parsedUrl.pathname === '/api/download-jobs') {
+    const jobs = [...downloadJobs.values()].map(publicDownloadJob);
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ success: true, jobs }));
+    return;
+  }
+
+  if (parsedUrl.pathname === '/api/download-cancel' && req.method === 'POST') {
+    return readJsonBody(req, res, (payload) => {
+      const ok = cancelDownloadJob(String(payload.id || ''));
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: ok }));
+    });
+  }
+
+  if (parsedUrl.pathname === '/api/download-clear' && req.method === 'POST') {
+    for (const [key, value] of [...downloadJobs]) {
+      if (['done', 'error', 'canceled'].includes(value.status)) downloadJobs.delete(key);
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ success: true }));
+    return;
   }
 
   if (parsedUrl.pathname === '/api/spotify-import') {

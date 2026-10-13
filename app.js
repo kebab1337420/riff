@@ -1286,6 +1286,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                           downloadPreviewFallback: document.getElementById('download-preview-fallback'),
                           downloadPreviewTitle: document.getElementById('download-preview-title'),
                           downloadPreviewArtist: document.getElementById('download-preview-artist'),
+                          downloadQueueSection: document.getElementById('download-queue-section'),
+                          downloadQueueList: document.getElementById('download-queue-list'),
+                          downloadQueueSummary: document.getElementById('download-queue-summary'),
+                          btnClearDownloads: document.getElementById('btn-clear-downloads'),
+                          btnViewDownloads: document.getElementById('btn-view-downloads'),
                           btnPlaybarMore: document.getElementById('btn-playbar-more'),
 
                           audioSettingsModal: document.getElementById('audio-settings-modal'),
@@ -8393,6 +8398,168 @@ document.addEventListener('DOMContentLoaded', async () => {
     elPath.textContent = '~/Downloads';
   }
 
+  let downloadJobsPoll = null;
+
+  function downloadsAreActive(jobs) {
+    return (jobs || []).some(j => j.status === 'queued' || j.status === 'downloading' || j.status === 'converting');
+  }
+
+  function downloadJobMetaText(job) {
+    switch (job.status) {
+      case 'queued': return 'Queued';
+      case 'downloading': {
+        const bits = [`${job.progress || 0}%`];
+        if (job.speed) bits.push(job.speed);
+        if (job.eta) bits.push(`ETA ${job.eta}`);
+        return bits.join(' • ');
+      }
+      case 'converting': return 'Converting…';
+      case 'done': return job.filename ? `Completed • ${job.filename}` : 'Completed';
+      case 'error': return job.error ? `Failed • ${job.error}` : 'Failed';
+      case 'canceled': return 'Canceled';
+      default: return job.status;
+    }
+  }
+
+  function renderDownloadQueue(jobs) {
+    jobs = jobs || [];
+    if (el.downloadQueueSection) el.downloadQueueSection.style.display = jobs.length ? '' : 'none';
+    if (el.downloadQueueSummary) {
+      const active = jobs.filter(j => ['queued', 'downloading', 'converting'].includes(j.status)).length;
+      const done = jobs.filter(j => j.status === 'done').length;
+      el.downloadQueueSummary.textContent = jobs.length
+        ? (active ? `${active} active${done ? `, ${done} done` : ''}` : `${done} completed`)
+        : 'No active downloads';
+    }
+    const list = el.downloadQueueList;
+    if (!list) return;
+    list.innerHTML = '';
+    for (const job of jobs) {
+      const row = document.createElement('div');
+      row.className = `download-queue-item is-${job.status}`;
+
+      const top = document.createElement('div');
+      top.className = 'download-queue-item-top';
+
+      const info = document.createElement('div');
+      info.className = 'download-queue-info';
+      const name = document.createElement('span');
+      name.className = 'download-queue-name';
+      name.textContent = job.title || 'untitled';
+      const meta = document.createElement('span');
+      meta.className = 'download-queue-meta';
+      meta.textContent = downloadJobMetaText(job);
+      info.append(name, meta);
+      top.appendChild(info);
+
+      if (['queued', 'downloading', 'converting'].includes(job.status)) {
+        const cancel = document.createElement('button');
+        cancel.className = 'download-queue-cancel';
+        cancel.title = 'Cancel download';
+        cancel.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>';
+        cancel.addEventListener('click', () => cancelDownloadJob(job.id));
+        top.appendChild(cancel);
+      }
+      row.appendChild(top);
+
+      const bar = document.createElement('div');
+      bar.className = 'download-queue-bar';
+      const fill = document.createElement('i');
+      const width = job.status === 'done' || job.status === 'error' ? 100 : (job.progress || 0);
+      fill.style.width = `${width}%`;
+      bar.appendChild(fill);
+      row.appendChild(bar);
+
+      list.appendChild(row);
+    }
+  }
+
+  async function refreshDownloadJobs() {
+    try {
+      const res = await fetch(`http://127.0.0.1:${state.serverPort}/api/download-jobs`);
+      const data = await res.json();
+      if (!data || !data.success) return;
+      const jobs = data.jobs || [];
+      renderDownloadQueue(jobs);
+      const active = downloadsAreActive(jobs);
+      const modalOpen = el.downloadModal && !el.downloadModal.classList.contains('hidden');
+      if (active && !downloadJobsPoll) startDownloadJobsPolling();
+      if (!active && !modalOpen && downloadJobsPoll) stopDownloadJobsPolling();
+    } catch (e) {}
+  }
+
+  function startDownloadJobsPolling() {
+    if (downloadJobsPoll) return;
+    downloadJobsPoll = setInterval(refreshDownloadJobs, 1500);
+  }
+
+  function stopDownloadJobsPolling() {
+    if (downloadJobsPoll) {
+      clearInterval(downloadJobsPoll);
+      downloadJobsPoll = null;
+    }
+  }
+
+  async function enqueueDownload(track) {
+    if (!track || track.platform === 'local') return false;
+    try {
+      const res = await fetch(`http://127.0.0.1:${state.serverPort}/api/download-start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          url: track.url || '',
+          title: track.title || '',
+          artist: track.artist || '',
+          format: selectedFormat,
+          quality: selectedQuality
+        })
+      });
+      const data = await res.json();
+      return !!(data && data.success);
+    } catch (e) {
+      return false;
+    }
+  }
+
+  async function cancelDownloadJob(id) {
+    try {
+      await fetch(`http://127.0.0.1:${state.serverPort}/api/download-cancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id })
+      });
+      refreshDownloadJobs();
+    } catch (e) {}
+  }
+
+  async function clearFinishedDownloads() {
+    try {
+      await fetch(`http://127.0.0.1:${state.serverPort}/api/download-clear`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}'
+      });
+      refreshDownloadJobs();
+    } catch (e) {}
+  }
+
+  function openDownloadsPanel() {
+    if (!el.downloadModal) return;
+    trackToDownload = null;
+    downloadBatch = null;
+    el.downloadModal.classList.remove('batch-mode');
+    const modalTitle = document.getElementById('download-modal-title');
+    if (modalTitle) modalTitle.textContent = 'Downloads';
+    if (el.downloadPreviewThumb) el.downloadPreviewThumb.style.display = 'none';
+    if (el.downloadPreviewFallback) el.downloadPreviewFallback.style.display = 'flex';
+    if (el.downloadPreviewTitle) el.downloadPreviewTitle.textContent = 'Download manager';
+    if (el.downloadPreviewArtist) el.downloadPreviewArtist.textContent = 'Track progress and cancel queued downloads';
+    updateDownloadBtnLabel();
+    updateDownloadCaptionPath();
+    openModal(el.downloadModal);
+    refreshDownloadJobs();
+  }
+
   function openDownloadModal(track) {
     if (!track || !el.downloadModal || track.platform === 'local') return;
     trackToDownload = track;
@@ -8434,6 +8601,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     openModal(el.downloadModal);
+    refreshDownloadJobs();
   }
 
   function openDownloadAllModal(playlist) {
@@ -8456,6 +8624,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     updateLosslessQualityState();
     updateDownloadCaptionPath();
     openModal(el.downloadModal);
+    refreshDownloadJobs();
   }
 
   document.querySelectorAll('.format-chip').forEach(chip => {
@@ -8479,13 +8648,23 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (el.btnCloseDownloadModal) {
     el.btnCloseDownloadModal.addEventListener('click', () => {
       if (el.downloadModal) closeModal(el.downloadModal);
+      refreshDownloadJobs();
     });
   }
 
   if (el.btnCancelDownload) {
     el.btnCancelDownload.addEventListener('click', () => {
       if (el.downloadModal) closeModal(el.downloadModal);
+      refreshDownloadJobs();
     });
+  }
+
+  if (el.btnClearDownloads) {
+    el.btnClearDownloads.addEventListener('click', () => clearFinishedDownloads());
+  }
+
+  if (el.btnViewDownloads) {
+    el.btnViewDownloads.addEventListener('click', () => openDownloadsPanel());
   }
 
   if (el.btnPlaybarMore) {
@@ -8493,75 +8672,37 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (state.currentTrack && state.currentTrack.platform !== 'local') {
         openDownloadModal(state.currentTrack);
       } else if (!state.currentTrack) {
-        showToast('No track currently playing', 'info');
+        openDownloadsPanel();
       }
     });
   }
 
   if (el.btnConfirmDownload) {
     el.btnConfirmDownload.addEventListener('click', async () => {
+      let queued = 0;
       if (downloadBatch) {
         const tracks = downloadBatch.tracks;
         el.btnConfirmDownload.disabled = true;
-        let done = 0;
-        let failed = 0;
-        let lastDir = null;
-        for (let i = 0; i < tracks.length; i++) {
-          const t = tracks[i];
-          if (el.downloadBtnText) el.downloadBtnText.textContent = `Downloading ${i + 1}/${tracks.length}`;
-          try {
-            const downloadUrl = `http://127.0.0.1:${state.serverPort}/api/download?url=${encodeURIComponent(t.url || '')}&title=${encodeURIComponent(t.title || '')}&artist=${encodeURIComponent(t.artist || '')}&format=${selectedFormat}&quality=${selectedQuality}`;
-            const res = await fetch(downloadUrl);
-            const text = await res.text();
-            let data;
-            try {
-              data = JSON.parse(text);
-            } catch (e) {
-              throw new Error(text || 'server error');
-            }
-            if (!data.success) throw new Error(data.error || 'Failed to download');
-            done++;
-            if (data.directory) lastDir = data.directory;
-          } catch (err) {
-            failed++;
-            console.error('Download failed:', t.title || t.url || '', err.message);
-          }
+        if (el.downloadBtnText) el.downloadBtnText.textContent = `Queueing ${tracks.length}…`;
+        for (const t of tracks) {
+          if (await enqueueDownload(t)) queued++;
         }
-        el.btnConfirmDownload.disabled = false;
         downloadBatch = null;
-        if (el.downloadModal) closeModal(el.downloadModal);
-        showToast(failed > 0 ? `Downloaded ${done}/${tracks.length} (${failed} failed)` : `Downloaded ${tracks.length} tracks${lastDir ? ' to ' + lastDir : ''}`, failed > 0 ? 'error' : 'success');
+      } else if (trackToDownload) {
+        el.btnConfirmDownload.disabled = true;
+        if (el.downloadBtnText) el.downloadBtnText.textContent = 'Adding…';
+        if (await enqueueDownload(trackToDownload)) queued++;
+      } else {
         return;
       }
-      if (!trackToDownload) return;
-      const t = trackToDownload;
-
-      if (el.downloadBtnText) el.downloadBtnText.textContent = 'Downloading & converting...';
-      el.btnConfirmDownload.disabled = true;
-
-      showToast(`Download started: ${t.title} (.${selectedFormat})`, 'info');
-
-      try {
-        const downloadUrl = `http://127.0.0.1:${state.serverPort}/api/download?url=${encodeURIComponent(t.url || '')}&title=${encodeURIComponent(t.title || '')}&artist=${encodeURIComponent(t.artist || '')}&format=${selectedFormat}&quality=${selectedQuality}`;
-        const res = await fetch(downloadUrl);
-        const text = await res.text();
-        let data;
-        try {
-          data = JSON.parse(text);
-        } catch (e) {
-          throw new Error(text || 'server error');
-        }
-
-        if (!data.success) throw new Error(data.error || 'Failed to download');
-
-        showToast(`Download complete: saved to ${data.directory ? data.directory + '/' : ''}${data.filename}`, 'info');
-        if (el.downloadModal) closeModal(el.downloadModal);
-      } catch (err) {
-        console.error('Download error:', err);
-        showToast(`Download failed: ${err.message}`, 'error');
-      } finally {
-        el.btnConfirmDownload.disabled = false;
-        updateDownloadBtnLabel();
+      el.btnConfirmDownload.disabled = false;
+      updateDownloadBtnLabel();
+      if (queued > 0) {
+        showToast(`Added ${queued} download${queued === 1 ? '' : 's'} to the queue`, 'info');
+        startDownloadJobsPolling();
+        await refreshDownloadJobs();
+      } else {
+        showToast('Could not start download', 'error');
       }
     });
   }
@@ -10019,6 +10160,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   updateOfflineStorageUI();
   updateMusicFolderUI();
   updateDownloadFolderUI();
+  refreshDownloadJobs();
   checkToolsStatus(false);
   setLyricsEmpty(true);
   updateLyricsTranslationUI();
