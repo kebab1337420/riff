@@ -381,7 +381,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                           audioSettings: savedSound.audioSettings,
                           hqEnabled: savedSound.hqEnabled,
                           hqSettings: savedSound.hqSettings,
-                          vfx: { ...defaultVfx, ...safeJson('devsize_vfx', {}), bassPulse: false, particles: false, soundwaveRings: false, borderGlow: false, backdropBlur: false, crt: false, grain: false, lyricsSpotlight: false },
+                          vfx: { ...defaultVfx, ...safeJson('devsize_vfx', {}) },
                           favorites: safeArray('devsize_favorites'),
                           history: safeArray('devsize_history'),
                           playlists: safeArray('devsize_playlists'),
@@ -2285,25 +2285,32 @@ document.addEventListener('DOMContentLoaded', async () => {
     return getTrackCanonicalId(a) === getTrackCanonicalId(b);
   }
 
-  function getTrackArt(t) {
+  let trackArtCache = null;
+
+  function loadTrackArt() {
+    if (trackArtCache) return trackArtCache;
     try {
-      return JSON.parse(localStorage.getItem('riff_track_art') || '{}')[getTrackCanonicalId(t)] || {};
+      trackArtCache = JSON.parse(localStorage.getItem('riff_track_art') || '{}') || {};
     } catch (e) {
-      return {};
+      trackArtCache = {};
     }
+    return trackArtCache;
+  }
+
+  function getTrackArt(t) {
+    const id = getTrackCanonicalId(t);
+    if (!id) return {};
+    return loadTrackArt()[id] || {};
   }
 
   function setTrackArt(t, patch) {
-    let all = {};
-    try {
-      all = JSON.parse(localStorage.getItem('riff_track_art') || '{}');
-    } catch (e) {}
     const id = getTrackCanonicalId(t);
     if (!id) return;
+    const all = loadTrackArt();
     const cur = { ...(all[id] || {}), ...patch };
     for (const k in cur) if (!cur[k]) delete cur[k];
     if (Object.keys(cur).length) all[id] = cur; else delete all[id];
-    localStorage.setItem('riff_track_art', JSON.stringify(all));
+    try { localStorage.setItem('riff_track_art', JSON.stringify(all)); } catch (e) {}
   }
 
   let crossfadeTriggered = false;
@@ -2444,6 +2451,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
           if (currentToken === state.loadToken) {
             el.nativeAudio.play().catch(e => console.warn('Play error:', e));
+          }
+        });
+        hlsInstance.on(Hls.Events.ERROR, (event, data) => {
+          if (data && data.fatal) {
+            console.warn('HLS fatal error:', data.type, data.details);
+            try { hlsInstance.destroy(); } catch (e) {}
+            hlsInstance = null;
           }
         });
       } else {
@@ -2752,6 +2766,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   function updateSyncedLyricsHighlight(currentTime) {
     if (state.syncedLyrics.length === 0 || !state.isWindowVisible) return;
     let activeIndex = -1;
+    let activeWordIndex = -1;
 
     const validLines = [];
     for (let i = 0; i < state.syncedLyrics.length; i++) {
@@ -2784,6 +2799,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const words = cleanText.split(/\s+/).filter(Boolean);
       const totalWords = words.length;
       const currentWordIndex = totalWords > 0 ? Math.floor(progress * totalWords) : 0;
+      activeWordIndex = currentWordIndex;
       const activeWordText = totalWords > 0 ? words[currentWordIndex] : '';
 
       const stateKey = `${activeIndex}-${currentWordIndex}`;
@@ -2792,6 +2808,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         sendStateToServer(activeWordText, currentWordIndex, activeIndex);
       }
     }
+
+    const karaokeOn = getAdv('karaoke_words', true) && state.lyricsMode === 'word';
+    const domKey = `${state.syncedLyrics.length}|${activeIndex}|${karaokeOn ? activeWordIndex : 0}|${karaokeOn ? 1 : 0}`;
+    if (state._lyricsArray === state.syncedLyrics && state._lyricsDomKey === domKey) return;
+    state._lyricsArray = state.syncedLyrics;
+    state._lyricsDomKey = domKey;
 
     const parent = el.lyricsContainer, lineChanged = state.lastActiveLyricIdx !== activeIndex;
     state.lastActiveLyricIdx = activeIndex;
@@ -4269,9 +4291,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     const o = getTrackArt(track).cover;
     if (o) return o;
     if (track.localThumbnail) return track.localThumbnail;
-    if (track.id && state.serverPort) {
-      const cleanId = String(track.id).replace(/[^a-zA-Z0-9_-]/g, '_');
-    }
     return track.thumbnail || '';
   }
 
