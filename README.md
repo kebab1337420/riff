@@ -165,7 +165,7 @@ npm install
 Start the development version:
 
 ```bash
-npm run dev
+npm start
 ```
 
 ## Building
@@ -173,7 +173,7 @@ npm run dev
 To create a production build, use:
 
 ```bash
-npm run build
+npm run dist
 ```
 
 The exact build output depends on the current project configuration.

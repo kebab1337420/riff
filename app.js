@@ -1,4 +1,11 @@
 
+window.addEventListener('unhandledrejection', (event) => {
+  console.error('Unhandled promise rejection:', event.reason);
+});
+window.addEventListener('error', (event) => {
+  if (event.error) console.error('Unhandled error:', event.error);
+});
+
 (() => {
   try {
     if (typeof window === 'undefined' || window.__riffFetchPatched) return;
@@ -6977,7 +6984,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     mini.querySelectorAll('video, audio, canvas, iframe').forEach((n) => n.remove());
     root.appendChild(mini);
     const fit = () => { const w = host.clientWidth; if (w) mini.style.transform = `scale(${w / window.innerWidth})`; };
-    new ResizeObserver(fit).observe(host);
+    if (host.__themeResizeObserver) host.__themeResizeObserver.disconnect();
+    host.__themeResizeObserver = new ResizeObserver(fit);
+    host.__themeResizeObserver.observe(host);
     fit();
   }
 
