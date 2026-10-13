@@ -2328,8 +2328,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   let crossfadeTriggered = false;
   let crossfadeFadeInPending = false;
 
-  async function playTrack(track, queueList = null, startIndex = -1, context = null) {
+  async function playTrack(track, queueList = null, startIndex = -1, context = null, opts = {}) {
     if (!track || !el.nativeAudio) return;
+    const autoplay = opts.autoplay !== false;
+    const startAt = Math.max(0, Number(opts.startAt) || 0);
     crossfadeTriggered = false;
     initAudioContext();
 
@@ -2367,6 +2369,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     state.currentAbortController = new AbortController();
     const signal = state.currentAbortController.signal;
 
+    function startOrRestore() {
+      if (autoplay) {
+        el.nativeAudio.play().catch(e => console.warn('Play error:', e));
+        return;
+      }
+      const applyPausedState = () => {
+        try { if (startAt > 0) el.nativeAudio.currentTime = startAt; } catch (e) {}
+        updatePlayPauseButton(false, false);
+        if (el.trackLoadingOverlay) el.trackLoadingOverlay.classList.add('hidden');
+      };
+      if (el.nativeAudio.readyState >= 1) applyPausedState();
+      else el.nativeAudio.addEventListener('loadedmetadata', applyPausedState, { once: true });
+    }
+
     state.currentTrack = track;
     state.currentTrackContext = context;
     state.currentTrackIndexInContext = startIndex;
@@ -2403,6 +2419,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     updateNowPlayingUI(track);
     updatePlayPauseButton(false, true);
+    saveSessionThrottled();
 
     loadSyncedLyrics(track.title, track.artist, currentToken);
 
@@ -2412,7 +2429,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (currentToken !== state.loadToken) return;
         el.nativeAudio.preload = 'auto';
         el.nativeAudio.src = streamUrl;
-        el.nativeAudio.play().catch(e => console.warn('Play error:', e));
+        startOrRestore();
         applyAudioSettings();
         return;
       }
@@ -2462,7 +2479,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         hlsInstance.attachMedia(el.nativeAudio);
         hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
           if (currentToken === state.loadToken) {
-            el.nativeAudio.play().catch(e => console.warn('Play error:', e));
+            startOrRestore();
           }
         });
         hlsInstance.on(Hls.Events.ERROR, (event, data) => {
@@ -2474,7 +2491,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
       } else {
         el.nativeAudio.src = data.streamUrl;
-        el.nativeAudio.play().catch(e => console.warn('Play error:', e));
+        startOrRestore();
       }
 
       applyAudioSettings();
@@ -2487,6 +2504,61 @@ document.addEventListener('DOMContentLoaded', async () => {
         showToast(err.message || 'Could not load audio stream', 'error');
       }
     }
+  }
+
+  const SESSION_KEY = 'riff_session';
+  const SESSION_QUEUE_LIMIT = 200;
+  let sessionSaveTimer = null;
+
+  function snapshotSession() {
+    if (!state.currentTrack || !state.currentTrack.id) return null;
+    const queue = Array.isArray(state.queue) ? state.queue.slice(0, SESSION_QUEUE_LIMIT) : [];
+    return {
+      v: 1,
+      queue,
+      queueIndex: state.queueIndex,
+      currentTrack: state.currentTrack,
+      position: el.nativeAudio ? (el.nativeAudio.currentTime || 0) : 0,
+      savedAt: Date.now()
+    };
+  }
+
+  function saveSessionNow() {
+    try {
+      const snap = snapshotSession();
+      if (!snap) {
+        localStorage.removeItem(SESSION_KEY);
+        return;
+      }
+      localStorage.setItem(SESSION_KEY, JSON.stringify(snap));
+    } catch (e) {}
+  }
+
+  function saveSessionThrottled() {
+    if (sessionSaveTimer) return;
+    sessionSaveTimer = setTimeout(() => {
+      sessionSaveTimer = null;
+      saveSessionNow();
+    }, 4000);
+  }
+
+  function clearSession() {
+    try { localStorage.removeItem(SESSION_KEY); } catch (e) {}
+  }
+
+  async function restoreSession() {
+    if (state.currentTrack) return;
+    let snap = null;
+    try { snap = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null'); } catch (e) {}
+    if (!snap || !snap.currentTrack || !snap.currentTrack.id) return;
+    const track = snap.currentTrack;
+    const queue = Array.isArray(snap.queue) && snap.queue.length ? snap.queue : null;
+    const index = typeof snap.queueIndex === 'number' ? snap.queueIndex : -1;
+    const position = Number(snap.position) || 0;
+    try {
+      await playTrack(track, queue, index, null, { autoplay: false, startAt: position });
+      showToast('Restored last session');
+    } catch (e) {}
   }
 
   function flipAnimate(elements, mutateFn, duration = 380) {
@@ -3436,6 +3508,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       sendDiscordRpcUpdate(state.currentTrack, true);
       sendStateToServer();
       updateMediaSession();
+      saveSessionNow();
     });
 
     el.nativeAudio.addEventListener('pause', () => {
@@ -3449,6 +3522,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       sendDiscordRpcUpdate(null, false);
       sendStateToServer();
       updateMediaSession();
+      saveSessionNow();
     });
 
     el.nativeAudio.addEventListener('ended', () => {
@@ -3485,6 +3559,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     el.nativeAudio.addEventListener('timeupdate', () => {
       const cur = el.nativeAudio.currentTime || 0;
       const dur = el.nativeAudio.duration || (state.currentTrack ? state.currentTrack.duration : 0);
+
+      saveSessionThrottled();
 
       const X = parseInt(localStorage.getItem('riff_crossfade') || '0', 10);
       if (X > 0 && !crossfadeTriggered && !state.isRepeat && dur > X && cur >= dur - X && (!audioEngine || !audioEngine.isLiveStream(el.nativeAudio))) {
@@ -10198,6 +10274,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   refreshStacks();
   requestAnimationFrame(() => requestAnimationFrame(refreshStacks));
   requestAnimationFrame(() => requestAnimationFrame(() => updateNavIndicator(false)));
+
+  restoreSession();
 
   if (localStorage.getItem('riff_perf_mode') === null && window.electronAPI && window.electronAPI.getGpuCompositing) {
     window.electronAPI.getGpuCompositing().then((status) => {
