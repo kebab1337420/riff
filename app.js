@@ -1225,6 +1225,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                           rightPanel: document.getElementById('right-panel'),
                           btnCloseRightPanel: document.getElementById('btn-close-right-panel'),
                           btnToggleLyricsPanel: document.getElementById('btn-toggle-lyrics-panel'),
+                          btnSleepTimer: document.getElementById('btn-sleep-timer'),
+                          sleepTimerMenu: document.getElementById('sleep-timer-menu'),
+                          sleepTimerCount: document.getElementById('sleep-timer-count'),
                           btnLyricsMode: document.getElementById('btn-lyrics-mode'),
                           coverContainer: document.getElementById('cover-container'),
                           rightPanelArtworkBox: document.getElementById('right-panel-artwork-box'),
@@ -3418,6 +3421,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     el.nativeAudio.addEventListener('ended', () => {
+      if (sleepTimerMode === 'end') {
+        expireSleepTimer();
+        return;
+      }
       if (state.isRepeat) {
         el.nativeAudio.currentTime = 0;
         el.nativeAudio.play().catch(() => {});
@@ -5005,6 +5012,136 @@ document.addEventListener('DOMContentLoaded', async () => {
     const m = Math.floor(sec / 60);
     const s = Math.floor(sec % 60);
     return `${m}:${s < 10 ? '0' : ''}${s}`;
+  }
+
+  let sleepTimerMode = 'off';
+  let sleepTimerMinutes = 0;
+  let sleepTimerEndAt = 0;
+  let sleepTimerInterval = null;
+
+  function sleepTimerRemainingMs() {
+    if (sleepTimerMode === 'minutes' && sleepTimerEndAt) return Math.max(0, sleepTimerEndAt - Date.now());
+    return 0;
+  }
+
+  function updateSleepTimerUI() {
+    if (el.btnSleepTimer) el.btnSleepTimer.classList.toggle('active', sleepTimerMode !== 'off');
+    if (el.sleepTimerCount) {
+      if (sleepTimerMode === 'minutes') {
+        el.sleepTimerCount.textContent = formatDuration(Math.ceil(sleepTimerRemainingMs() / 1000));
+        el.sleepTimerCount.classList.remove('hidden');
+      } else if (sleepTimerMode === 'end') {
+        el.sleepTimerCount.textContent = 'end';
+        el.sleepTimerCount.classList.remove('hidden');
+      } else {
+        el.sleepTimerCount.textContent = '';
+        el.sleepTimerCount.classList.add('hidden');
+      }
+    }
+    if (el.sleepTimerMenu) {
+      el.sleepTimerMenu.querySelectorAll('.sleep-timer-option').forEach((btn) => {
+        const v = btn.dataset.value;
+        const selected = (sleepTimerMode === 'off' && v === 'off')
+          || (sleepTimerMode === 'end' && v === 'end')
+          || (sleepTimerMode === 'minutes' && v === String(sleepTimerMinutes));
+        btn.classList.toggle('selected', selected);
+      });
+    }
+  }
+
+  function persistSleepTimer() {
+    if (sleepTimerMode === 'off') {
+      localStorage.removeItem('riff_sleep_timer');
+      return;
+    }
+    localStorage.setItem('riff_sleep_timer', JSON.stringify({
+      mode: sleepTimerMode,
+      minutes: sleepTimerMinutes,
+      endAt: sleepTimerEndAt,
+    }));
+  }
+
+  function stopSleepTimerTick() {
+    if (sleepTimerInterval) {
+      clearInterval(sleepTimerInterval);
+      sleepTimerInterval = null;
+    }
+  }
+
+  function startSleepTimerTick() {
+    stopSleepTimerTick();
+    sleepTimerInterval = setInterval(() => {
+      if (sleepTimerMode !== 'minutes') { stopSleepTimerTick(); return; }
+      if (sleepTimerRemainingMs() <= 0) { expireSleepTimer(); return; }
+      updateSleepTimerUI();
+    }, 1000);
+  }
+
+  function expireSleepTimer() {
+    stopSleepTimerTick();
+    sleepTimerMode = 'off';
+    sleepTimerMinutes = 0;
+    sleepTimerEndAt = 0;
+    persistSleepTimer();
+    updateSleepTimerUI();
+    if (el.nativeAudio && !el.nativeAudio.paused) el.nativeAudio.pause();
+    showToast('Sleep timer: playback paused', 'info');
+  }
+
+  function setSleepTimer(value) {
+    if (value === 'off') {
+      stopSleepTimerTick();
+      sleepTimerMode = 'off';
+      sleepTimerMinutes = 0;
+      sleepTimerEndAt = 0;
+    } else if (value === 'end') {
+      stopSleepTimerTick();
+      sleepTimerMode = 'end';
+      sleepTimerMinutes = 0;
+      sleepTimerEndAt = 0;
+    } else {
+      const mins = parseInt(value, 10);
+      if (!mins || mins <= 0) return;
+      sleepTimerMode = 'minutes';
+      sleepTimerMinutes = mins;
+      sleepTimerEndAt = Date.now() + mins * 60000;
+      startSleepTimerTick();
+    }
+    persistSleepTimer();
+    updateSleepTimerUI();
+  }
+
+  if (el.btnSleepTimer && el.sleepTimerMenu) {
+    el.btnSleepTimer.addEventListener('click', (e) => {
+      e.stopPropagation();
+      el.sleepTimerMenu.classList.toggle('hidden');
+    });
+    el.sleepTimerMenu.querySelectorAll('.sleep-timer-option').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        setSleepTimer(btn.dataset.value);
+        el.sleepTimerMenu.classList.add('hidden');
+      });
+    });
+    document.addEventListener('click', (e) => {
+      if (!el.sleepTimerMenu.classList.contains('hidden') && !e.target.closest('#sleep-timer-wrap')) {
+        el.sleepTimerMenu.classList.add('hidden');
+      }
+    });
+    try {
+      const raw = localStorage.getItem('riff_sleep_timer');
+      if (raw) {
+        const saved = JSON.parse(raw);
+        if (saved && saved.mode === 'end') {
+          sleepTimerMode = 'end';
+        } else if (saved && saved.mode === 'minutes' && saved.endAt > Date.now()) {
+          sleepTimerMode = 'minutes';
+          sleepTimerMinutes = saved.minutes || 0;
+          sleepTimerEndAt = saved.endAt;
+          startSleepTimerTick();
+        }
+      }
+    } catch (e) {}
+    updateSleepTimerUI();
   }
 
   if (el.btnResetVfx) {

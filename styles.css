@@ -2240,6 +2240,77 @@ body.is-window-resizing .platform-switch-container {
   color: var(--md-sys-color-on-surface);
 }
 
+.sleep-timer-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.sleep-timer-wrap #btn-sleep-timer {
+  position: relative;
+}
+.sleep-timer-wrap #btn-sleep-timer.active {
+  color: var(--md-sys-color-primary);
+  background: color-mix(in srgb, var(--md-sys-color-primary) 16%, transparent);
+}
+.sleep-timer-count {
+  position: absolute;
+  bottom: -3px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 1px 3px;
+  border-radius: var(--md-shape-corner-full);
+  background: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
+  pointer-events: none;
+  white-space: nowrap;
+}
+.sleep-timer-menu {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  right: 0;
+  min-width: 172px;
+  background: var(--md-sys-color-surface-container-high);
+  border-radius: var(--md-shape-corner-m);
+  padding: 6px;
+  z-index: 500;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.sleep-timer-menu.hidden {
+  display: none;
+}
+.sleep-timer-menu-label {
+  font-size: calc(11px * var(--font-scale, 1));
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--md-sys-color-on-surface-variant);
+  padding: 6px 12px 4px;
+}
+.sleep-timer-option {
+  text-align: left;
+  padding: 9px 12px;
+  border: none;
+  background: transparent;
+  color: var(--md-sys-color-on-surface);
+  font-family: var(--font-family);
+  font-size: calc(13px * var(--font-scale, 1));
+  border-radius: 8px;
+  cursor: pointer;
+}
+.sleep-timer-option:hover {
+  background: var(--md-sys-color-surface-container-highest);
+}
+.sleep-timer-option.selected {
+  color: var(--md-sys-color-primary);
+  font-weight: 600;
+}
+
 .btn-pill-primary {
   background: var(--btn-primary-bg, var(--md-sys-color-primary));
   color: var(--btn-primary-fg, var(--md-sys-color-on-primary));
