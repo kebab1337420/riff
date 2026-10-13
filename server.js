@@ -94,6 +94,30 @@ function streamFileToResponse(stream, res) {
   stream.pipe(res);
 }
 
+const DOWNLOAD_TIMEOUT_MS = 10 * 60 * 1000;
+
+function parseByteRange(rangeHeader, fileSize) {
+  const match = /^bytes=(\d*)-(\d*)$/.exec(String(rangeHeader).trim());
+  if (!match) return null;
+  const startRaw = match[1];
+  const endRaw = match[2];
+  if (startRaw === '' && endRaw === '') return null;
+  let start;
+  let end;
+  if (startRaw === '') {
+    const suffix = parseInt(endRaw, 10);
+    if (!Number.isFinite(suffix) || suffix <= 0) return null;
+    start = Math.max(0, fileSize - suffix);
+    end = fileSize - 1;
+  } else {
+    start = parseInt(startRaw, 10);
+    end = endRaw === '' ? fileSize - 1 : parseInt(endRaw, 10);
+  }
+  if (!Number.isFinite(start) || !Number.isFinite(end) || start > end || start >= fileSize) return null;
+  if (end >= fileSize) end = fileSize - 1;
+  return { start, end };
+}
+
 if (!fs.existsSync(CACHE_DIR)) fs.mkdirSync(CACHE_DIR, { recursive: true });
 if (!fs.existsSync(CUSTOM_LYRICS_DIR)) fs.mkdirSync(CUSTOM_LYRICS_DIR, { recursive: true });
 if (!fs.existsSync(LYRICS_DIR)) fs.mkdirSync(LYRICS_DIR, { recursive: true });
@@ -706,8 +730,19 @@ async function downloadTrackToDisk(trackUrl, trackId, platform, meta = {}) {
   let cmd;
   try { cmd = ytDlpCommand(args); } catch (e) { downloadingSet.delete(cleanId); console.error(e.message); return; }
   const proc = spawn(cmd.bin, cmd.args, { windowsHide: true });
+  let downloadTimer = null;
+  if (DOWNLOAD_TIMEOUT_MS > 0) {
+    downloadTimer = setTimeout(() => {
+      try { proc.kill('SIGKILL'); } catch (e) {}
+    }, DOWNLOAD_TIMEOUT_MS);
+  }
+  let downloadStderr = '';
+  if (proc.stdout) proc.stdout.resume();
+  if (proc.stderr) proc.stderr.on('data', (d) => { downloadStderr += d.toString(); });
   proc.on('close', async (code) => {
+    if (downloadTimer) clearTimeout(downloadTimer);
     downloadingSet.delete(cleanId);
+    if (code !== 0 && downloadStderr) console.error('download failed:', downloadStderr.slice(0, 500));
     if (code === 0 && fs.existsSync(tempPath)) {
       try {
         const stat = await fs.promises.stat(tempPath);
@@ -734,6 +769,7 @@ async function downloadTrackToDisk(trackUrl, trackId, platform, meta = {}) {
   });
 
   proc.on('error', () => {
+    if (downloadTimer) clearTimeout(downloadTimer);
     downloadingSet.delete(cleanId);
   });
 }
@@ -1302,9 +1338,13 @@ async function handleLocalTrack(req, res, trackId) {
     const contentType = mimeTypes[ext] || 'audio/mpeg';
 
     if (range) {
-      const parts = range.replace(/bytes=/, "").split("-");
-      const start = parseInt(parts[0], 10);
-      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+      const parsed = parseByteRange(range, fileSize);
+      if (!parsed) {
+        res.writeHead(416, { 'Content-Range': `bytes */${fileSize}` });
+        res.end();
+        return;
+      }
+      const { start, end } = parsed;
       const chunksize = (end - start) + 1;
       const file = fs.createReadStream(filePath, { start, end });
       const head = {
@@ -1360,9 +1400,13 @@ async function handleLibraryFile(req, res, trackId) {
     const contentType = LIBRARY_MIME_TYPES[ext] || 'audio/mpeg';
 
     if (range) {
-      const parts = range.replace(/bytes=/, "").split("-");
-      const start = parseInt(parts[0], 10);
-      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+      const parsed = parseByteRange(range, fileSize);
+      if (!parsed) {
+        res.writeHead(416, { 'Content-Range': `bytes */${fileSize}` });
+        res.end();
+        return;
+      }
+      const { start, end } = parsed;
       const chunksize = (end - start) + 1;
       const file = fs.createReadStream(filePath, { start, end });
       const head = {
@@ -1407,9 +1451,13 @@ async function handleDownloadedTrack(req, res, name) {
     const contentType = LIBRARY_MIME_TYPES[ext] || 'audio/mpeg';
 
     if (range) {
-      const parts = range.replace(/bytes=/, "").split("-");
-      const start = parseInt(parts[0], 10);
-      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+      const parsed = parseByteRange(range, fileSize);
+      if (!parsed) {
+        res.writeHead(416, { 'Content-Range': `bytes */${fileSize}` });
+        res.end();
+        return;
+      }
+      const { start, end } = parsed;
       const chunksize = (end - start) + 1;
       const file = fs.createReadStream(filePath, { start, end });
       const head = {
