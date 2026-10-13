@@ -377,8 +377,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     paletteStyle: localStorage.getItem('riff_palette_style') || 'classic',
     meshBrightness: parseInt(localStorage.getItem('riff_mesh_brightness') || '100', 10),
     themeAccent: localStorage.getItem('riff_theme_accent') || '#6750A4',
-    themeIntensity: parseInt(localStorage.getItem('riff_theme_intensity') || '0'),
-    themeBrightness: parseInt(localStorage.getItem('riff_theme_brightness') || '50'),
+    themeIntensity: parseInt(localStorage.getItem('riff_theme_intensity', 10) || '0'),
+    themeBrightness: parseInt(localStorage.getItem('riff_theme_brightness', 10) || '50'),
     trEnabled: localStorage.getItem('riff_tr_enabled') === 'true',
     trLang: localStorage.getItem('riff_tr_lang') || 'en',
     trAuto: localStorage.getItem('riff_tr_auto') === 'true',
@@ -1426,7 +1426,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (el.sliderCornerRadius) el.sliderCornerRadius.value = savedRadius;
   if (el.valCornerRadius) el.valCornerRadius.textContent = savedRadius === '16' ? 'Default' : `${savedRadius}px`;
   document.documentElement.style.setProperty('--md-shape-corner-l', `${savedRadius}px`);
-  document.documentElement.style.setProperty('--md-shape-corner-m', `${Math.max(0, parseInt(savedRadius) - 4)}px`);
+  document.documentElement.style.setProperty('--md-shape-corner-m', `${Math.max(0, parseInt(savedRadius, 10) - 4)}px`);
 
   applyReducedMotionSetting();
 
