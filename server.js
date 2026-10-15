@@ -142,6 +142,14 @@ const lyricsCache = new Map();
 const artistCache = new Map();
 const vibeCache = new Map();
 const ytArtistCache = new Map();
+
+const MAX_CACHE_ENTRIES = 500;
+function cacheSet(map, key, value, max = MAX_CACHE_ENTRIES) {
+  if (!map.has(key) && map.size >= max) {
+    map.delete(map.keys().next().value);
+  }
+  map.set(key, value);
+}
 const downloadingSet = new Set();
 const prefetchingSet = new Set();
 
@@ -779,7 +787,7 @@ async function prefetchTrack(trackUrl, trackId, platform) {
         isHls: isHls,
         proxyUrl: `http://127.0.0.1:${PORT}/api/audio-proxy?url=${encodeURIComponent(streamUrl)}`
       };
-      streamUrlCache.set(cleanId, { timestamp: Date.now(), data });
+      cacheSet(streamUrlCache, cleanId, { timestamp: Date.now(), data });
     }
   } catch (e) {
   } finally {
@@ -880,7 +888,7 @@ async function handleSearch(req, res, query, platform = 'youtube', limit = 20) {
       const directTracks = await directYoutubeSearch(query);
       if (directTracks && directTracks.length > 0) {
         const result = { success: true, tracks: directTracks.slice(0, limit) };
-        searchCache.set(cacheKey, result);
+        cacheSet(searchCache, cacheKey, result);
 
         setTimeout(() => {
           if (directTracks[0] && directTracks[0].url) {
@@ -900,12 +908,12 @@ async function handleSearch(req, res, query, platform = 'youtube', limit = 20) {
       const songs = parseYtmSongs(json).slice(0, limit);
       if (songs.length > 0) {
         const entries = await Promise.all(songs.map(async (s) => {
-          ytArtistCache.set(s.id, s.artist);
+          cacheSet(ytArtistCache, s.id, s.artist);
           const isCached = await findCachedFile(s.id);
           return { id: s.id, title: s.title, artist: s.artist, duration: s.duration, thumbnail: s.thumbnail, url: `https://www.youtube.com/watch?v=${s.id}`, platform: 'youtube', isCached: !!isCached };
         }));
         const result = { success: true, tracks: entries };
-        searchCache.set(cacheKey, result);
+        cacheSet(searchCache, cacheKey, result);
         setTimeout(() => {
           if (entries[0] && entries[0].url) prefetchTrack(entries[0].url, entries[0].id, 'youtube').catch(() => {});
         }, 60);
@@ -999,7 +1007,7 @@ async function handleSearch(req, res, query, platform = 'youtube', limit = 20) {
         };
       }));
       const result = { success: true, tracks: entries };
-      searchCache.set(cacheKey, result);
+      cacheSet(searchCache, cacheKey, result);
       setTimeout(() => {
         if (entries[0] && entries[0].url) prefetchTrack(entries[0].url, entries[0].id, 'youtube').catch(() => {});
       }, 60);
@@ -1274,7 +1282,7 @@ async function fetchArtistInfo(artistName) {
     tracks: tracks.slice(0, 35)
   };
 
-  artistCache.set(cacheKey, result);
+  cacheSet(artistCache, cacheKey, result);
   return result;
 }
 
@@ -1773,7 +1781,7 @@ async function handleLyrics(req, res, title, artist, allowOnline = true) {
   if (fs.existsSync(customPath)) {
     try {
       const customLyrics = await fs.promises.readFile(customPath, 'utf-8');
-      lyricsCache.set(cacheKey, { text: customLyrics, isCustom: true });
+      cacheSet(lyricsCache, cacheKey, { text: customLyrics, isCustom: true });
       res.writeHead(200, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ success: true, lyrics: customLyrics, isCustom: true }));
     } catch (e) {}
@@ -1790,7 +1798,7 @@ async function handleLyrics(req, res, title, artist, allowOnline = true) {
   if (fs.existsSync(fetchedLyricsPath)) {
     try {
       const diskLyrics = await fs.promises.readFile(fetchedLyricsPath, 'utf-8');
-      lyricsCache.set(cacheKey, { text: diskLyrics, isCustom: false });
+      cacheSet(lyricsCache, cacheKey, { text: diskLyrics, isCustom: false });
       res.writeHead(200, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ success: true, lyrics: diskLyrics, isCustom: false }));
     } catch (e) {}
@@ -1808,7 +1816,7 @@ async function handleLyrics(req, res, title, artist, allowOnline = true) {
         await fs.promises.writeFile(fetchedLyricsPath, rawLyrics, 'utf-8');
       } catch (e) {}
     }
-    lyricsCache.set(cacheKey, { text: rawLyrics, isCustom: false });
+      cacheSet(lyricsCache, cacheKey, { text: rawLyrics, isCustom: false });
 
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ success: true, lyrics: rawLyrics }));
