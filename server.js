@@ -751,9 +751,11 @@ async function prefetchTrack(trackUrl, trackId, platform) {
   if (!cleanId && trackUrl && trackUrl.includes('v=')) {
     cleanId = cleanTrackId(trackUrl.split('v=')[1].split('&')[0]);
   }
-  if (!cleanId || prefetchingSet.size > 2) return;
-  if (await findCachedFile(cleanId) || streamUrlCache.has(cleanId) || prefetchingSet.has(cleanId)) return;
-  prefetchingSet.add(cleanId);
+  const cacheKey = (cleanId || trackUrl).toLowerCase();
+  if (!cacheKey || prefetchingSet.size > 2) return;
+  const isCached = (cleanId && await findCachedFile(cleanId)) || streamUrlCache.has(cacheKey) || (cleanId && streamUrlCache.has(cleanId));
+  if (isCached || prefetchingSet.has(cacheKey)) return;
+  prefetchingSet.add(cacheKey);
 
   try {
     if (platform === 'youtube' && (!trackUrl || !trackUrl.startsWith('http')) && cleanId) {
@@ -766,8 +768,9 @@ async function prefetchTrack(trackUrl, trackId, platform) {
       '--no-warnings',
       '--no-playlist',
       '--no-check-certificates',
+      '--prefer-free-formats',
       '-f',
-      'ba/b'
+      'bestaudio/best'
     ];
     if (platform === 'youtube') {
       args.push('--extractor-args', 'youtube:player_client=android');
@@ -787,11 +790,14 @@ async function prefetchTrack(trackUrl, trackId, platform) {
         isHls: isHls,
         proxyUrl: `http://127.0.0.1:${PORT}/api/audio-proxy?url=${encodeURIComponent(streamUrl)}`
       };
-      cacheSet(streamUrlCache, cleanId, { timestamp: Date.now(), data });
+      cacheSet(streamUrlCache, cacheKey, { timestamp: Date.now(), data });
+      if (cleanId && cleanId !== cacheKey) {
+        cacheSet(streamUrlCache, cleanId, { timestamp: Date.now(), data });
+      }
     }
   } catch (e) {
   } finally {
-    prefetchingSet.delete(cleanId);
+    prefetchingSet.delete(cacheKey);
   }
 }
 
@@ -1105,7 +1111,11 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
   }
   const meta = { title, artist, duration, thumbnail };
 
-  const cachedFile = await findCachedFile(cleanId);
+  const [cachedFile, downloadedName] = await Promise.all([
+    cleanId ? findCachedFile(cleanId) : Promise.resolve(null),
+    (title || artist) ? findDownloadedFile(title, artist) : Promise.resolve(null)
+  ]);
+
   if (cachedFile) {
     const data = {
       success: true,
@@ -1116,7 +1126,6 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
     return res.end(JSON.stringify(data));
   }
 
-  const downloadedName = await findDownloadedFile(title, artist);
   if (downloadedName) {
     const data = {
       success: true,
@@ -1128,11 +1137,12 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
     return res.end(JSON.stringify(data));
   }
 
-  if (streamUrlCache.has(cleanId)) {
-    const cached = streamUrlCache.get(cleanId);
-    if (Date.now() - cached.timestamp < 7200000) {
+  const cacheKey = (cleanId || trackUrl || `${artist}_${title}`).toLowerCase();
+  if (cacheKey && (streamUrlCache.has(cacheKey) || (cleanId && streamUrlCache.has(cleanId)))) {
+    const cached = streamUrlCache.get(cacheKey) || (cleanId ? streamUrlCache.get(cleanId) : null);
+    if (cached && (Date.now() - cached.timestamp < 1800000)) {
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      setTimeout(() => downloadTrackToDisk(trackUrl, cleanId, platform, meta), 10000);
+      if (cleanId) setTimeout(() => downloadTrackToDisk(trackUrl, cleanId, platform, meta), 10000);
       return res.end(JSON.stringify(cached.data));
     }
   }
@@ -1145,7 +1155,7 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
 
   if (isSafeMediaUrl(trackUrl)) {
     try {
-      const args = ['--no-config', '-g', '--no-warnings', '--no-playlist', '--no-check-certificates', '-f', 'ba/b'];
+      const args = ['--no-config', '-g', '--no-warnings', '--no-playlist', '--no-check-certificates', '--prefer-free-formats', '-f', 'bestaudio/best'];
       if (platform === 'youtube') {
         args.push('--extractor-args', 'youtube:player_client=android');
       }
@@ -1159,7 +1169,7 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
   if (!streamUrl && (title || artist || trackUrl)) {
     try {
       const q = `${artist} ${title}`.trim() || trackUrl;
-      const scArgs = ['--no-config', '-g', '--no-warnings', '--no-playlist', '--no-check-certificates', '-f', 'ba/b', `scsearch1:${q}`];
+      const scArgs = ['--no-config', '-g', '--no-warnings', '--no-playlist', '--no-check-certificates', '--prefer-free-formats', '-f', 'bestaudio/best', `scsearch1:${q}`];
       const scRaw = await executeYtDlp(scArgs, 15000);
       const scLines = scRaw.trim().split('\n').map(l => l.trim()).filter(l => l.startsWith('http'));
       if (scLines.length > 0) streamUrl = scLines[0];
@@ -1180,8 +1190,9 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
     proxyUrl: `http://127.0.0.1:${PORT}/api/audio-proxy?url=${encodeURIComponent(streamUrl)}`
   };
 
-  streamUrlCache.set(cleanId, { timestamp: Date.now(), data });
-  setTimeout(() => downloadTrackToDisk(trackUrl, cleanId, platform, meta), 10000);
+  if (cacheKey) streamUrlCache.set(cacheKey, { timestamp: Date.now(), data });
+  if (cleanId && cleanId !== cacheKey) streamUrlCache.set(cleanId, { timestamp: Date.now(), data });
+  if (cleanId) setTimeout(() => downloadTrackToDisk(trackUrl, cleanId, platform, meta), 10000);
 
   res.writeHead(200, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify(data));
@@ -1196,6 +1207,7 @@ async function fetchArtistInfo(artistName) {
   let avatar = '';
   let isVerified = false;
   let tracks = [];
+  let resolvedName = cleanName;
 
   try {
     const dzUrl = `https://api.deezer.com/search/artist?q=${encodeURIComponent(cleanName)}`;
@@ -1211,6 +1223,7 @@ async function fetchArtistInfo(artistName) {
 
     if (dzData && dzData.data && dzData.data.length > 0) {
       const topArtist = dzData.data[0];
+      if (topArtist.name) resolvedName = topArtist.name;
       avatar = topArtist.picture_xl || topArtist.picture_big || topArtist.picture_medium || '';
       isVerified = (topArtist.nb_fan || 0) > 30000;
 
@@ -1275,8 +1288,8 @@ async function fetchArtistInfo(artistName) {
   }
 
   const result = {
-    name: cleanName,
-    bio: bio || 'artist biography available across streaming networks.',
+    name: resolvedName,
+    bio: (bio || '').trim(),
     avatar: avatar || (tracks[0] ? tracks[0].thumbnail : ''),
     isVerified: isVerified,
     tracks: tracks.slice(0, 35)
@@ -1904,9 +1917,33 @@ async function fetchFullSpotifyPlaylist(playlistId, accessToken) {
   const tracks = items.map(it => {
     const t = it?.itemV2?.data || it?.item?.data || {};
     const artists = (t.albumOfTrack?.artists?.items || []).map(a => a.profile?.name).filter(Boolean);
-    return { title: t.name || '', artist: artists.join(', ') };
+    const durationMs = t.trackDuration?.totalMilliseconds || t.duration?.totalMilliseconds || t.duration_ms;
+    const duration = durationMs ? Math.round(durationMs / 1000) : undefined;
+    return { title: t.name || '', artist: artists.join(', '), duration };
   }).filter(t => t.title);
   return { tracks, total };
+}
+
+async function trySpotifyWebApi(playlistId) {
+  if (!spotifyAuth || !spotifyAuth.token) return null;
+  try {
+    const resp = await spotifyGetWithRetry(`https://api.spotify.com/v1/playlists/${encodeURIComponent(playlistId)}`, spotifyAuth.token);
+    if (resp.status >= 200 && resp.status < 300) {
+      const d = JSON.parse(resp.body);
+      const name = d.name || 'Spotify Playlist';
+      const items = (d.tracks && Array.isArray(d.tracks.items)) ? d.tracks.items : [];
+      const tracks = items.map(it => {
+        const t = it.track || it;
+        return {
+          title: t.name || '',
+          artist: Array.isArray(t.artists) ? t.artists.map(a => a.name).join(', ') : '',
+          duration: t.duration_ms ? Math.round(t.duration_ms / 1000) : undefined
+        };
+      }).filter(t => t.title);
+      return { success: true, name, tracks, total: d.tracks?.total || tracks.length };
+    }
+  } catch (e) {}
+  return null;
 }
 
 function handleSpotifyImport(req, res, inputUrl) {
@@ -1929,51 +1966,270 @@ function handleSpotifyImport(req, res, inputUrl) {
     getRes.on('data', chunk => body += chunk);
     getRes.on('end', async () => {
       try {
+        if (getRes.statusCode === 404) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ success: false, error: 'not_found', status: 404 }));
+        }
+        if (getRes.statusCode === 429) {
+          res.writeHead(429, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ success: false, error: 'rate_limit', status: 429 }));
+        }
         const nextDataMatch = body.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
         if (!nextDataMatch) {
-          res.writeHead(500, { 'Content-Type': 'application/json' });
-          return res.end(JSON.stringify({ success: false, error: 'No __NEXT_DATA__ found' }));
+          const apiFallback = await trySpotifyWebApi(playlistId);
+          if (apiFallback && apiFallback.tracks.length) {
+            const hasMore = apiFallback.total > 100 && (apiFallback.tracks.length >= 100 || apiFallback.tracks.length < apiFallback.total);
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify({ success: true, name: apiFallback.name, tracks: apiFallback.tracks.slice(0, 100), hasMore, total: apiFallback.total }));
+          }
+          const isPriv = /private/i.test(body);
+          res.writeHead(403, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ success: false, error: isPriv ? 'private' : 'restricted', status: 403 }));
         }
         const data = JSON.parse(nextDataMatch[1]);
-        const entity = data?.props?.pageProps?.state?.data?.entity;
-        if (!entity) {
-          res.writeHead(500, { 'Content-Type': 'application/json' });
-          return res.end(JSON.stringify({ success: false, error: 'Spotify entity not found' }));
+        const pageProps = data?.props?.pageProps;
+        if (pageProps?.status === 404) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ success: false, error: 'not_found', status: 404 }));
         }
-        const name = entity.name || 'Spotify Playlist';
-        let tracks = null;
-        const accessToken = data?.props?.pageProps?.state?.settings?.session?.accessToken;
+        const entity = pageProps?.state?.data?.entity;
+        const name = entity?.name || pageProps?.title || 'Spotify Playlist';
+        let tracks = [];
+        const seen = new Set();
+        function walk(node) {
+          if (!node || typeof node !== 'object') return;
+          if (Array.isArray(node)) {
+            for (const item of node) walk(item);
+            return;
+          }
+          const uri = typeof node.uri === 'string' ? node.uri : '';
+          const title = node.title || node.name;
+          const subtitle = node.subtitle || node.artist || (Array.isArray(node.artists) ? node.artists.map(a => typeof a === 'string' ? a : (a.name || a.profile?.name)).filter(Boolean).join(', ') : (node.albumOfTrack?.artists?.items || []).map(a => a.profile?.name).filter(Boolean).join(', '));
+          const duration = node.duration?.totalMilliseconds || node.trackDuration?.totalMilliseconds || node.duration_ms || (typeof node.duration === 'number' ? node.duration : undefined);
+          if (title && typeof title === 'string' && (subtitle || uri.startsWith('spotify:track:')) && (uri.startsWith('spotify:track:') || node.entityType === 'track' || duration)) {
+            const key = `${title}__${subtitle || ''}`;
+            if (!seen.has(key)) {
+              seen.add(key);
+              const durSec = typeof duration === 'number' ? (duration > 1000 ? Math.round(duration / 1000) : Math.round(duration)) : undefined;
+              tracks.push({ title: title.trim(), artist: typeof subtitle === 'string' ? subtitle.trim() : '', duration: durSec });
+            }
+            return;
+          }
+          for (const k of Object.keys(node)) {
+            walk(node[k]);
+          }
+        }
+
+        const accessToken = pageProps?.state?.settings?.session?.accessToken;
+        let total = 0;
         if (accessToken) {
           try {
             const full = await fetchFullSpotifyPlaylist(playlistId, accessToken);
-            if (full && full.tracks.length) tracks = full.tracks;
+            if (full && full.tracks && full.tracks.length) {
+              tracks = full.tracks;
+              total = full.total || full.tracks.length;
+            }
           } catch (e) {}
         }
-        if (!tracks) {
-          const rawTracks = Array.isArray(entity.trackList) ? entity.trackList : [];
-          tracks = rawTracks.slice(0, 100).map(t => ({
-            title: t.title || '',
-            artist: t.subtitle || ''
-          }));
+        if (!tracks.length) {
+          walk(data);
         }
+        if (!total) {
+          total = entity?.totalCount || (Array.isArray(entity?.trackList) ? entity.trackList.length : 0) || tracks.length;
+        }
+
+        if (!tracks.length) {
+          const apiFallback = await trySpotifyWebApi(playlistId);
+          if (apiFallback && apiFallback.tracks.length) {
+            const hasMore = apiFallback.total > 100 && (apiFallback.tracks.length >= 100 || apiFallback.tracks.length < apiFallback.total);
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify({ success: true, name: apiFallback.name, tracks: apiFallback.tracks.slice(0, 100), hasMore, total: apiFallback.total }));
+          }
+          const isPriv = /private/i.test(body) || /private/i.test(JSON.stringify(pageProps || {}));
+          res.writeHead(403, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ success: false, error: isPriv ? 'private' : 'restricted', status: 403 }));
+        }
+
+        const hasMore = total > 100 && (tracks.length >= 100 || tracks.length < total);
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: true, name, tracks }));
+        res.end(JSON.stringify({ success: true, name, tracks: tracks.slice(0, 100), hasMore, total }));
       } catch (err) {
         res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: false, error: err.message }));
+        res.end(JSON.stringify({ success: false, error: 'unknown', status: 500 }));
       }
     });
   });
 
   getReq.on('error', (err) => {
     res.writeHead(500, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ success: false, error: err.message }));
+    res.end(JSON.stringify({ success: false, error: 'network', status: 500 }));
   });
   getReq.on('timeout', () => {
     getReq.destroy();
     res.writeHead(504, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ success: false, error: 'Spotify request timed out' }));
+    res.end(JSON.stringify({ success: false, error: 'network', status: 504 }));
   });
+}
+
+function fetchHtmlWithRedirects(targetUrl, maxRedirects = 5, timeoutMs = 15000) {
+  return new Promise((resolve, reject) => {
+    let redirects = 0;
+    function fetchUrl(currentUrl) {
+      let parsed;
+      try { parsed = new URL(currentUrl); } catch (e) { return reject(e); }
+      const client = parsed.protocol === 'http:' ? http : https;
+      const req = client.get(currentUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept-Language': 'en-US,en;q=0.9'
+        },
+        timeout: timeoutMs
+      }, (res) => {
+        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          if (++redirects > maxRedirects) {
+            return reject(new Error('Too many redirects'));
+          }
+          const nextUrl = new URL(res.headers.location, currentUrl).toString();
+          return fetchUrl(nextUrl);
+        }
+        let body = '';
+        res.on('data', c => body += c);
+        res.on('end', () => resolve({ statusCode: res.statusCode, headers: res.headers, body }));
+      });
+      req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
+      req.on('error', reject);
+    }
+    fetchUrl(targetUrl);
+  });
+}
+
+async function handleAppleImport(req, res, inputUrl) {
+  const m = (inputUrl || '').match(/music\.apple\.com\/.*?(pl\.(?:u-)?[a-zA-Z0-9_-]+)/i);
+  if (!m) {
+    res.writeHead(400, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({ success: false, error: 'Invalid Apple Music playlist URL' }));
+  }
+
+  try {
+    const fetched = await fetchHtmlWithRedirects(inputUrl, 5, 15000);
+    const { statusCode, body } = fetched;
+
+    if (statusCode === 404) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ success: false, error: 'not_found', status: 404 }));
+    }
+    if (statusCode === 429) {
+      res.writeHead(429, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ success: false, error: 'rate_limit', status: 429 }));
+    }
+    if (statusCode === 401 || statusCode === 403) {
+      res.writeHead(403, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ success: false, error: 'private', status: 403 }));
+    }
+
+    let parsedData = null;
+    const serverDataMatch = body.match(/<script\s+type=["']application\/json["']\s+id=["']serialized-server-data["'][^>]*>([\s\S]*?)<\/script>/i);
+    if (serverDataMatch) {
+      try { parsedData = JSON.parse(serverDataMatch[1]); } catch (e) {}
+    }
+    if (!parsedData) {
+      const ldMatch = body.match(/<script\s+id=["']schema:music-playlist["']\s+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/i);
+      if (ldMatch) {
+        try { parsedData = JSON.parse(ldMatch[1]); } catch (e) {}
+      }
+    }
+
+    if (!parsedData) {
+      const isPriv = /private|sign\s*in|login/i.test(body);
+      res.writeHead(403, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ success: false, error: isPriv ? 'private' : 'restricted', status: 403 }));
+    }
+
+    const tracks = [];
+    const seen = new Set();
+    let plTitle = '';
+    let plCover = '';
+    let totalCount = 0;
+
+    function walk(node) {
+      if (!node || typeof node !== 'object') return;
+      if (Array.isArray(node)) {
+        for (const item of node) walk(item);
+        return;
+      }
+
+      if (!plTitle) {
+        if (node.contentDescriptor?.kind === 'playlist' || node.type === 'playlists' || node.type === 'playlist') {
+          plTitle = node.title || node.name || node.attributes?.name || '';
+          if (node.artwork?.dictionary?.url) plCover = node.artwork.dictionary.url;
+          else if (node.artwork?.url) plCover = node.artwork.url;
+        } else if (node['@type'] === 'MusicPlaylist') {
+          plTitle = node.name || '';
+        }
+      }
+
+      if (!totalCount && typeof node.trackCount === 'number') {
+        totalCount = node.trackCount;
+      }
+
+      const title = (typeof node.title === 'string' ? node.title : (typeof node.name === 'string' && (node['@type'] === 'MusicRecording' || node.type === 'songs') ? node.name : '')).trim();
+      const artist = (typeof node.artistName === 'string' ? node.artistName : (typeof node.artist === 'string' ? node.artist : (typeof node.byArtist?.name === 'string' ? node.byArtist.name : ''))).trim();
+      const durRaw = node.durationInMillis || node.duration || node.duration_ms;
+      let duration;
+      if (typeof durRaw === 'number') {
+        duration = durRaw > 1000 ? Math.round(durRaw / 1000) : Math.round(durRaw);
+      } else if (typeof durRaw === 'string' && durRaw.startsWith('PT')) {
+        const mDur = durRaw.match(/PT(?:(\d+)M)?(?:(\d+)S)?/);
+        if (mDur) duration = (parseInt(mDur[1] || '0', 10) * 60) + parseInt(mDur[2] || '0', 10);
+      }
+
+      if (title && artist && (node.contentDescriptor?.kind === 'song' || node.contentDescriptor?.kind === 'music-video' || node.type === 'songs' || node.type === 'song' || node.type === 'library-songs' || node['@type'] === 'MusicRecording' || duration || node.audioTraits)) {
+        const key = `${title.toLowerCase()}___${artist.toLowerCase()}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          tracks.push({ title, artist, duration });
+        }
+        return;
+      }
+
+      for (const k of Object.keys(node)) {
+        walk(node[k]);
+      }
+    }
+
+    walk(parsedData);
+
+    if (!plTitle) {
+      const ogMatch = body.match(/<meta\s+property=["']og:title["']\s+content=["']([^"']*)["']/i);
+      if (ogMatch) {
+        plTitle = ogMatch[1].replace(/\s*on Apple Music\s*$/i, '').trim();
+      } else {
+        const titleMatch = body.match(/<title>([^<]*)<\/title>/i);
+        if (titleMatch) {
+          plTitle = titleMatch[1].replace(/\s*-\s*Playlist\s*-\s*Apple Music\s*$/i, '').replace(/^[^\w\s]+/, '').trim();
+        }
+      }
+    }
+
+    if (plCover && typeof plCover === 'string' && plCover.includes('{w}x{h}bb.{f}')) {
+      plCover = plCover.replace('{w}x{h}bb.{f}', '600x600bb.jpg');
+    }
+
+    if (!tracks.length) {
+      const isPriv = /private|sign\s*in|login/i.test(body) || !tracks.length;
+      res.writeHead(403, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ success: false, error: isPriv ? 'private' : 'restricted', status: 403 }));
+    }
+
+    const total = totalCount || tracks.length;
+    const hasMore = total > tracks.length;
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({ success: true, name: plTitle || 'Apple Music Playlist', cover: plCover, tracks, hasMore, total }));
+  } catch (err) {
+    const isNet = err.message === 'timeout' || /fetch|network|dns|econnrefused|etimedout/i.test(err.message || '');
+    res.writeHead(isNet ? 504 : 500, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({ success: false, error: isNet ? 'network' : 'unknown', status: isNet ? 504 : 500 }));
+  }
 }
 
 async function handlePlaylistImport(req, res, inputUrl) {
@@ -2186,7 +2442,8 @@ async function handleSpotifyLibrary(req, res, query) {
           if (!t || t.is_local || t.type === 'episode') continue;
           const artist = (Array.isArray(t.artists) && t.artists[0]?.name) || '';
           const title = t.name || '';
-          if (title) likes.push({ title, artist });
+          const duration = t.duration_ms ? Math.round(t.duration_ms / 1000) : undefined;
+          if (title) likes.push({ title, artist, duration });
           if (likes.length >= 5000) break;
         }
         nextUrl = data.next || null;
@@ -2231,7 +2488,8 @@ async function handleSpotifyLibrary(req, res, query) {
             if (!t || t.is_local || t.type === 'episode') continue;
             const artist = (Array.isArray(t.artists) && t.artists[0]?.name) || '';
             const title = t.name || '';
-            if (title) plTracks.push({ title, artist });
+            const duration = t.duration_ms ? Math.round(t.duration_ms / 1000) : undefined;
+            if (title) plTracks.push({ title, artist, duration });
           }
           let trackNext = pageData.next || null;
           while (trackNext) {
@@ -2246,7 +2504,8 @@ async function handleSpotifyLibrary(req, res, query) {
               if (!t || t.is_local || t.type === 'episode') continue;
               const artist = (Array.isArray(t.artists) && t.artists[0]?.name) || '';
               const title = t.name || '';
-              if (title) plTracks.push({ title, artist });
+              const duration = t.duration_ms ? Math.round(t.duration_ms / 1000) : undefined;
+              if (title) plTracks.push({ title, artist, duration });
             }
             trackNext = nextData.next || null;
           }
@@ -2434,6 +2693,11 @@ const server = http.createServer(async (req, res) => {
   if (parsedUrl.pathname === '/api/spotify-import') {
     const spotifyUrl = parsedUrl.query.url || '';
     return handleSpotifyImport(req, res, spotifyUrl);
+  }
+
+  if (parsedUrl.pathname === '/api/apple-import') {
+    const appleUrl = parsedUrl.query.url || '';
+    return handleAppleImport(req, res, appleUrl);
   }
 
   if (parsedUrl.pathname === '/api/playlist-import') {

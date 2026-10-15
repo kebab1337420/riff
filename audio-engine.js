@@ -33,6 +33,12 @@
 
       this.masterGain = null;
       this.analyserNode = null;
+      this.fadeGain = null;
+      this.bus = null;
+      this._analyserConnected = false;
+      this._suspendTimer = null;
+      this._attachedElement = null;
+      this._routingState = null;
 
       this.hqEnabled = false;
       this.hqSettings = {
@@ -103,10 +109,19 @@
       if (!audioElement) return;
 
       if (this.ctx) {
-        if (this.ctx.state === 'suspended') this.ctx.resume().catch(() => {});
+        if (!audioElement.paused && this.ctx.state === 'suspended') {
+          this.ctx.resume().catch(() => {});
+        }
       } else {
         const AC = window.AudioContext || window.webkitAudioContext;
         this.ctx = new AC({ latencyHint: 'playback' });
+      }
+
+      if (this._attachedElement !== audioElement) {
+        this._attachedElement = audioElement;
+        audioElement.addEventListener('play', () => this.resumeAudioContext());
+        audioElement.addEventListener('pause', () => this.suspendAudioContextDebounced(5000));
+        audioElement.addEventListener('ended', () => this.suspendAudioContextDebounced(5000));
       }
 
       if (!this.graphInitialized) {
@@ -141,6 +156,13 @@
           this.hqLimiter.attack.value = 0.005;
           this.hqLimiter.release.value = 0.05;
 
+          this.hqInput.connect(this.hqCompressor);
+          this.hqCompressor.connect(this.hqBass);
+          this.hqBass.connect(this.hqVocal);
+          this.hqVocal.connect(this.hqAir);
+          this.hqAir.connect(this.hqSaturation);
+          this.hqSaturation.connect(this.hqLimiter);
+
           this.dryGain = this.ctx.createGain();
           this.dryGain.gain.value = 1.0;
 
@@ -158,6 +180,7 @@
           this.delayGain.gain.value = 0.0;
           this.delayNode.connect(this.delayFeedback);
           this.delayFeedback.connect(this.delayNode);
+          this.delayNode.connect(this.delayGain);
 
           this.convolverNode = this.ctx.createConvolver();
           this.convolverNode.buffer = this._createReverbImpulse(this.ctx);
@@ -195,35 +218,12 @@
           for (let i = 0; i < this.eqBands.length - 1; i++) {
             this.eqBands[i].connect(this.eqBands[i + 1]);
           }
-          const lastBand = this.eqBands[this.eqBands.length - 1];
 
-          this.hqInput.connect(this.hqCompressor);
-          this.hqCompressor.connect(this.hqBass);
-          this.hqBass.connect(this.hqVocal);
-          this.hqVocal.connect(this.hqAir);
-          this.hqAir.connect(this.hqSaturation);
-          this.hqSaturation.connect(this.hqLimiter);
-          this.hqLimiter.connect(this.eqLow);
-
-          this.stdInput.connect(this.eqLow);
-
-          lastBand.connect(this.dryGain);
-          this.dryGain.connect(this.masterGain);
-
-          lastBand.connect(this.distortionNode);
-          this.distortionNode.connect(this.distortionGain);
-          this.distortionGain.connect(this.masterGain);
-
-          lastBand.connect(this.delayNode);
-          this.delayNode.connect(this.delayGain);
-          this.delayGain.connect(this.masterGain);
-
-          lastBand.connect(this.convolverNode);
-          this.convolverNode.connect(this.reverbGain);
-          this.reverbGain.connect(this.masterGain);
-
-          this.masterGain.connect(this.analyserNode);
-          this.analyserNode.connect(this.ctx.destination);
+          this.bus = this.ctx.createGain();
+          this.fadeGain = this.ctx.createGain();
+          this.fadeGain.gain.value = 1.0;
+          this.masterGain.connect(this.fadeGain);
+          this.fadeGain.connect(this.ctx.destination);
 
           this.graphInitialized = true;
           this._updateRouting();
@@ -233,18 +233,116 @@
       }
 
       this.applySettings();
+      if (audioElement.paused) this.suspendAudioContextDebounced(5000);
     }
 
 
+    _isEqActive() {
+      const s = this.audioSettings;
+      if (s.eq && (s.eq.low !== 0 || s.eq.mid !== 0 || s.eq.high !== 0)) return true;
+      if (Array.isArray(s.eqBands) && s.eqBands.some(v => v !== 0)) return true;
+      return false;
+    }
+
     _updateRouting() {
-      if (!this.mediaSource) return;
-      this.mediaSource.disconnect();
-      if (this.hqEnabled) {
+      if (!this.graphInitialized || !this.mediaSource) return;
+
+      const s = this.audioSettings;
+      const isEqOn = this._isEqActive();
+      const isReverbOn = (s.reverb || 0) > 0;
+      const isEchoOn = (s.echo || 0) > 0;
+      const isDistortionOn = (s.distortion || 0) > 0;
+      const isHqOn = !!this.hqEnabled;
+
+      const stateKey = `${isHqOn}_${isEqOn}_${isReverbOn}_${isEchoOn}_${isDistortionOn}`;
+      if (this._routingState === stateKey) {
+        this._applyHqParams();
+        return;
+      }
+      this._routingState = stateKey;
+
+      try {
+        this.mediaSource.disconnect();
+        this.stdInput.disconnect();
+        this.hqLimiter.disconnect();
+        this.bus.disconnect();
+        this.dryGain.disconnect();
+        if (this.eqBands && this.eqBands.length) {
+          this.eqBands[this.eqBands.length - 1].disconnect();
+        }
+        this.distortionNode.disconnect();
+        this.distortionGain.disconnect();
+        this.delayGain.disconnect();
+        this.convolverNode.disconnect();
+        this.reverbGain.disconnect();
+      } catch (e) {}
+
+      const inputNode = isHqOn ? this.hqLimiter : this.stdInput;
+      if (isHqOn) {
         this.mediaSource.connect(this.hqInput);
       } else {
         this.mediaSource.connect(this.stdInput);
       }
+
+      if (isEqOn) {
+        inputNode.connect(this.eqLow);
+        this.eqBands[this.eqBands.length - 1].connect(this.bus);
+      } else {
+        inputNode.connect(this.bus);
+      }
+
+      this.bus.connect(this.dryGain);
+      this.dryGain.connect(this.masterGain);
+
+      if (isDistortionOn) {
+        this.bus.connect(this.distortionNode);
+        this.distortionNode.connect(this.distortionGain);
+        this.distortionGain.connect(this.masterGain);
+      }
+
+      if (isEchoOn) {
+        this.bus.connect(this.delayNode);
+        this.delayGain.connect(this.masterGain);
+      }
+
+      if (isReverbOn) {
+        this.bus.connect(this.convolverNode);
+        this.convolverNode.connect(this.reverbGain);
+        this.reverbGain.connect(this.masterGain);
+      }
+
       this._applyHqParams();
+    }
+
+    flushEffects() {
+      if (!this.graphInitialized || !this.ctx) return;
+      try {
+        if (this.delayNode) {
+          const dt = this.delayNode.delayTime.value;
+          const fb = this.delayFeedback ? this.delayFeedback.gain.value : 0.35;
+          try {
+            this.delayNode.disconnect();
+            if (this.delayFeedback) this.delayFeedback.disconnect();
+          } catch (e) {}
+          this.delayNode = this.ctx.createDelay(1.0);
+          this.delayNode.delayTime.value = dt;
+          this.delayFeedback = this.ctx.createGain();
+          this.delayFeedback.gain.value = fb;
+          this.delayNode.connect(this.delayFeedback);
+          this.delayFeedback.connect(this.delayNode);
+          if (this.delayGain) this.delayNode.connect(this.delayGain);
+        }
+        if (this.convolverNode) {
+          try {
+            this.convolverNode.disconnect();
+          } catch (e) {}
+          this.convolverNode = this.ctx.createConvolver();
+          this.convolverNode.buffer = this._createReverbImpulse(this.ctx);
+          if (this.reverbGain) this.convolverNode.connect(this.reverbGain);
+        }
+        this._routingState = null;
+        this._updateRouting();
+      } catch (e) {}
     }
 
 
@@ -323,6 +421,7 @@
       if (this.eqLow) this.eqLow.gain.value = this.audioSettings.eq.low;
       if (this.eqMid) this.eqMid.gain.value = this.audioSettings.eq.mid;
       if (this.eqHigh) this.eqHigh.gain.value = this.audioSettings.eq.high;
+      if (this.graphInitialized) this._updateRouting();
     }
 
     setEqBands(gains) {
@@ -342,6 +441,7 @@
           }
         }
       }
+      if (this.graphInitialized) this._updateRouting();
     }
 
     setVolume(volume, isMuted) {
@@ -386,6 +486,7 @@
         }
       }
 
+      if (this.graphInitialized) this._updateRouting();
       this._applyMasterVolume();
     }
 
@@ -430,11 +531,59 @@
       return this.analyserNode;
     }
 
+    setAnalyserEnabled(enabled) {
+      const active = !!enabled;
+      if (this._analyserConnected === active) return;
+      this._analyserConnected = active;
+      if (!this.masterGain || !this.analyserNode || !this.ctx) return;
+      try {
+        if (active) {
+          this.masterGain.connect(this.analyserNode);
+        } else {
+          try {
+            this.masterGain.disconnect(this.analyserNode);
+          } catch (e) {
+            this.masterGain.disconnect();
+            this.masterGain.connect(this.fadeGain || this.ctx.destination);
+          }
+        }
+      } catch (e) {}
+    }
+
+    suspendAudioContextDebounced(delayMs = 5000) {
+      if (this._suspendTimer) clearTimeout(this._suspendTimer);
+      this._suspendTimer = setTimeout(() => {
+        this._suspendTimer = null;
+        if (this.ctx && this.ctx.state === 'running') {
+          this.ctx.suspend().catch(() => {});
+        }
+      }, delayMs);
+    }
+
+    resumeAudioContext() {
+      if (this._suspendTimer) {
+        clearTimeout(this._suspendTimer);
+        this._suspendTimer = null;
+      }
+      if (this.ctx && this.ctx.state === 'suspended') {
+        return this.ctx.resume().catch(() => {});
+      }
+    }
+
+    setHidden(hidden) {
+      if (this.analyserNode) {
+        this.analyserNode.fftSize = hidden ? 32 : 128;
+      }
+      if (hidden) this.setAnalyserEnabled(false);
+    }
+
     getFrequencyData(buffer) {
+      if (!this._analyserConnected) this.setAnalyserEnabled(true);
       if (this.analyserNode) this.analyserNode.getByteFrequencyData(buffer);
     }
 
     getTimeDomainData(buffer) {
+      if (!this._analyserConnected) this.setAnalyserEnabled(true);
       if (this.analyserNode) this.analyserNode.getByteTimeDomainData(buffer);
     }
 

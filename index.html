@@ -265,13 +265,7 @@
         </div>
 
         <div class="search-results-container hidden" id="search-results-container">
-          <div class="results-header">
-            <div class="results-title-group">
-              <h2 class="results-title" id="results-title">Results</h2>
-              <span class="results-platform-badge" id="results-platform-badge">YouTube</span>
-            </div>
-            <span class="results-count" id="results-count">0 tracks found</span>
-          </div>
+          <div id="search-artist-card-container"></div>
           <div class="tracks-list" id="search-tracks-list"></div>
         </div>
       </section>
@@ -388,7 +382,7 @@
                 <span>Verified artist</span>
               </div>
               <h1 class="artist-title" id="artist-profile-name">Artist</h1>
-              <p class="artist-bio-snippet" id="artist-profile-bio">Biography...</p>
+              <p class="artist-bio-snippet hidden" id="artist-profile-bio"></p>
               <div class="artist-actions-bar">
                 <button class="btn-pill-primary" id="btn-play-artist-tracks">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
@@ -421,10 +415,6 @@
                   <line x1="9" x2="9" y1="21" y2="9"/>
                 </svg>
                 <span>Interface</span>
-              </button>
-              <button class="settings-nav-btn" data-cat="custom-themes">
-                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r=".5"/><circle cx="17.5" cy="10.5" r=".5"/><circle cx="8.5" cy="7.5" r=".5"/><circle cx="6.5" cy="12.5" r=".5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.9 0 1.7-.8 1.7-1.7 0-.4-.2-.8-.4-1.1-.3-.3-.4-.7-.4-1.1 0-.9.8-1.7 1.7-1.7H16c3.3 0 6-2.7 6-6 0-4.9-4.5-8.4-10-8.4z"/></svg>
-                <span>Custom themes</span>
               </button>
               <button class="settings-nav-btn" data-cat="theme">
                 <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -491,6 +481,10 @@
                   <path d="M12 8h.01"/>
                 </svg>
                 <span>About</span>
+              </button>
+              <button class="settings-nav-btn" data-cat="custom-themes">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r=".5"/><circle cx="17.5" cy="10.5" r=".5"/><circle cx="8.5" cy="7.5" r=".5"/><circle cx="6.5" cy="12.5" r=".5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.9 0 1.7-.8 1.7-1.7 0-.4-.2-.8-.4-1.1-.3-.3-.4-.7-.4-1.1 0-.9.8-1.7 1.7-1.7H16c3.3 0 6-2.7 6-6 0-4.9-4.5-8.4-10-8.4z"/></svg>
+                <span>Custom themes</span>
               </button>
             </nav>
             <div class="settings-pane">
@@ -579,16 +573,6 @@
             </div>
 
             <div class="setting-item">
-              <div class="setting-item-top" style="align-items: center;">
-                <div style="display: flex; flex-direction: column; gap: 2px;">
-                  <span class="setting-name">Save sound settings</span>
-                  <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Automatically save High Quality, effects and the active preset</span>
-                </div>
-                <button class="effect-switch-btn" id="btn-persist-sound-settings"><span class="thumb"></span></button>
-              </div>
-            </div>
-
-            <div class="setting-item">
               <div class="setting-item-top">
                 <span class="setting-name">Corner radius</span>
                 <span class="setting-value" id="val-corner-radius">Default</span>
@@ -633,6 +617,13 @@
 
             <div class="setting-item">
               <div class="setting-item-top" style="align-items: center;">
+                <span class="setting-name">Show wave visualizer in bottom bar</span>
+                <button class="effect-switch-btn active" id="btn-bar-wave"><span class="thumb"></span></button>
+              </div>
+            </div>
+
+            <div class="setting-item">
+              <div class="setting-item-top" style="align-items: center;">
                 <div style="display: flex; flex-direction: column; gap: 2px;">
                   <span class="setting-name">Performance mode</span>
                   <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Disables visualizers, animated gradient and blur effects, limits animations to 30 FPS</span>
@@ -644,7 +635,17 @@
               </div>
 
               <div class="settings-section" data-cat="custom-themes">
-                <div class="ct-head"><div><div class="settings-section-title">Custom themes</div><div class="setting-hint">Add a .css file to restyle Riff. Tip: Riff sets its color variables from JavaScript, so a theme must use !important to override them (for example --md-sys-color-primary: #ff4081 !important). Ctrl+Shift+R turns every custom theme and CSS off if something breaks.</div></div><button class="btn-pill-primary" id="btn-add-theme">Add</button></div>
+                <div class="ct-head">
+                  <div style="display: flex; flex-direction: column; gap: 4px;">
+                    <div class="settings-section-title">Custom themes</div>
+                    <div style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-on-surface-variant); font-weight: normal; line-height: 1.4;">
+                      Add a .css file to restyle Riff.<br>
+                      Tip: Riff sets its color variables from JavaScript, so a theme must use !important to override them (for example --md-sys-color-primary: #ff4081 !important).<br>
+                      Ctrl+Shift+R turns every custom theme and CSS off if something breaks.
+                    </div>
+                  </div>
+                  <button class="btn-pill-primary" id="btn-add-theme">Add</button>
+                </div>
                 <div class="ct-list m3-group" id="custom-themes-list"></div>
               </div>
 
@@ -872,6 +873,13 @@
                 <div class="m3-group">
             <div class="setting-item">
               <div class="setting-item-top" style="align-items: center;">
+                <span class="setting-name">Show artists in search</span>
+                <button class="effect-switch-btn active" id="btn-search-artists"><span class="thumb"></span></button>
+              </div>
+            </div>
+
+            <div class="setting-item">
+              <div class="setting-item-top" style="align-items: center;">
                 <span class="setting-name">Show My files tab</span>
                 <button class="effect-switch-btn active" id="btn-show-local"><span class="thumb"></span></button>
               </div>
@@ -881,6 +889,16 @@
               <div class="setting-item-top" style="align-items: center;">
                 <span class="setting-name">Smooth preset transitions</span>
                 <button class="effect-switch-btn active" id="btn-smooth-presets"><span class="thumb"></span></button>
+              </div>
+            </div>
+
+            <div class="setting-item">
+              <div class="setting-item-top" style="align-items: center;">
+                <div style="display: flex; flex-direction: column; gap: 2px;">
+                  <span class="setting-name">Save sound settings</span>
+                  <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Automatically save High Quality, effects and the active preset</span>
+                </div>
+                <button class="effect-switch-btn" id="btn-persist-sound-settings"><span class="thumb"></span></button>
               </div>
             </div>
 
@@ -968,20 +986,24 @@
 
             <div class="setting-item" id="card-spotify-import">
               <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
-                <span class="setting-name">Spotify Import</span>
-                <button class="btn-pill-primary" id="btn-open-spotify-import" type="button" style="display: flex; align-items: center; gap: 8px;">
-                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M7 9.5c3.5-1 7.5-.7 10.5 1"/><path d="M7.5 12.7c3-.8 6-.5 8.5.9"/><path d="M8 15.8c2.5-.6 4.5-.4 6.5.7"/></svg>
-                  <span>Import from Spotify</span>
-                </button>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                  <span style="width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: var(--md-sys-color-on-surface-variant);">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M7 9.5c3.5-1 7.5-.7 10.5 1"/><path d="M7.5 12.7c3-.8 6-.5 8.5.9"/><path d="M8 15.8c2.5-.6 4.5-.4 6.5.7"/></svg>
+                  </span>
+                  <span class="setting-name">Spotify</span>
+                </div>
+                <button class="btn-pill-primary" id="btn-open-spotify-import" type="button">Import</button>
               </div>
             </div>
 
             <div class="setting-item" id="card-yt-import">
               <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
                 <div style="display: flex; align-items: center; gap: 10px;">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style="color: #ffffff; flex-shrink: 0;">
-                    <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
-                  </svg>
+                  <span style="width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: var(--md-sys-color-on-surface-variant);">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+                    </svg>
+                  </span>
                   <span class="setting-name">YouTube</span>
                 </div>
                 <button class="btn-pill-primary btn-open-link-import" id="btn-open-link-import" data-platform="youtube" type="button">Import</button>
@@ -991,9 +1013,11 @@
             <div class="setting-item" id="card-ytm-import">
               <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
                 <div style="display: flex; align-items: center; gap: 10px;">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style="color: #ffffff; flex-shrink: 0;">
-                    <path d="M12 0C5.376 0 0 5.376 0 12s5.376 12 12 12 12-5.376 12-12S18.624 0 12 0zm0 19.104c-3.924 0-7.104-3.18-7.104-7.104S8.076 4.896 12 4.896s7.104 3.18 7.104 7.104-3.18 7.104-7.104 7.104zm0-13.333c-3.44 0-6.229 2.789-6.229 6.229s2.789 6.229 6.229 6.229 6.229-2.789 6.229-6.229-2.789-6.229-6.229-6.229zm-1.75 9.138V9.091l5.426 3.092-5.426 3.092z"/>
-                  </svg>
+                  <span style="width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: var(--md-sys-color-on-surface-variant);">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M12 0C5.376 0 0 5.376 0 12s5.376 12 12 12 12-5.376 12-12S18.624 0 12 0zm0 19.104c-3.924 0-7.104-3.18-7.104-7.104S8.076 4.896 12 4.896s7.104 3.18 7.104 7.104-3.18 7.104-7.104 7.104zm0-13.333c-3.44 0-6.229 2.789-6.229 6.229s2.789 6.229 6.229 6.229 6.229-2.789 6.229-6.229-2.789-6.229-6.229-6.229zm-1.75 9.138V9.091l5.426 3.092-5.426 3.092z"/>
+                    </svg>
+                  </span>
                   <span class="setting-name">YouTube Music</span>
                 </div>
                 <button class="btn-pill-primary btn-open-link-import" id="btn-open-ytm-import" data-platform="ytmusic" type="button">Import</button>
@@ -1003,12 +1027,28 @@
             <div class="setting-item" id="card-sc-import">
               <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
                 <div style="display: flex; align-items: center; gap: 10px;">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style="color: #ffffff; flex-shrink: 0;">
-                    <path d="M1.175 12.225c-.051 0-.094.044-.103.097l-.29 3.01c-.01.076.046.14.122.14.051 0 .094-.043.103-.097l.29-3.01a.117.117 0 0 0-.122-.14zm1.037-1.127c-.06 0-.11.048-.12.112l-.438 4.148c-.01.082.05.15.132.15.06 0 .11-.048.12-.112l.438-4.148c.01-.082-.05-.15-.132-.15zm1.096-.693c-.07 0-.13.054-.14.126l-.496 4.838c-.01.088.055.163.143.163.07 0 .13-.054.14-.126l.496-4.838c.01-.088-.055-.163-.143-.163zm1.144-.436c-.08 0-.148.06-.16.142l-.527 5.275c-.01.094.06.175.154.175.08 0 .148-.06.16-.142l.527-5.275c.01-.094-.06-.175-.154-.175zm1.18-.328c-.09 0-.165.068-.178.16l-.525 5.603c-.01.1.066.187.168.187.09 0 .165-.068.178-.16l.525-5.603c.01-.1-.066-.187-.168-.187zm1.205-.109c-.1 0-.183.075-.198.176l-.504 5.712c-.01.106.072.198.179.198.1 0 .183-.075.198-.176l.504-5.712c.01-.106-.072-.198-.179-.198zm1.222.054c-.11 0-.2.083-.217.195l-.47 5.658c-.01.112.078.21.192.21.11 0 .2-.083.217-.195l.47-5.658c.01-.112-.078-.21-.192-.21zm1.233.273c-.12 0-.218.09-.236.213l-.427 5.385c-.01.12.083.22.206.22.12 0 .218-.09.236-.213l.427-5.385c.01-.12-.083-.22-.206-.22zm1.238.655c-.13 0-.236.1-.255.232l-.374 4.73c-.01.126.09.232.22.232.13 0 .236-.1.255-.232l.374-4.73c.01-.126-.09-.232-.22-.232zm3.328-4.323c-.31 0-.61.05-.89.15a3.49 3.49 0 0 0-2.02-1.46c-.14-.04-.26.06-.26.2v8.94c0 .12.1.22.22.22h6.14c1.93 0 3.5-1.57 3.5-3.5s-1.57-3.5-3.5-3.5c-.38 0-.74.06-1.07.18-.08-1.59-1.39-2.85-3.03-2.85z"/>
-                  </svg>
+                  <span style="width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: var(--md-sys-color-on-surface-variant);">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M1.175 12.225c-.051 0-.094.044-.103.097l-.29 3.01c-.01.076.046.14.122.14.051 0 .094-.043.103-.097l.29-3.01a.117.117 0 0 0-.122-.14zm1.037-1.127c-.06 0-.11.048-.12.112l-.438 4.148c-.01.082.05.15.132.15.06 0 .11-.048.12-.112l.438-4.148c.01-.082-.05-.15-.132-.15zm1.096-.693c-.07 0-.13.054-.14.126l-.496 4.838c-.01.088.055.163.143.163.07 0 .13-.054.14-.126l.496-4.838c.01-.088-.055-.163-.143-.163zm1.144-.436c-.08 0-.148.06-.16.142l-.527 5.275c-.01.094.06.175.154.175.08 0 .148-.06.16-.142l.527-5.275c.01-.094-.06-.175-.154-.175zm1.18-.328c-.09 0-.165.068-.178.16l-.525 5.603c-.01.1.066.187.168.187.09 0 .165-.068.178-.16l.525-5.603c.01-.1-.066-.187-.168-.187zm1.205-.109c-.1 0-.183.075-.198.176l-.504 5.712c-.01.106.072.198.179.198.1 0 .183-.075.198-.176l.504-5.712c.01-.106-.072-.198-.179-.198zm1.222.054c-.11 0-.2.083-.217.195l-.47 5.658c-.01.112.078.21.192.21.11 0 .2-.083.217-.195l.47-5.658c.01-.112-.078-.21-.192-.21zm1.233.273c-.12 0-.218.09-.236.213l-.427 5.385c-.01.12.083.22.206.22.12 0 .218-.09.236-.213l.427-5.385c.01-.12-.083-.22-.206-.22zm1.238.655c-.13 0-.236.1-.255.232l-.374 4.73c-.01.126.09.232.22.232.13 0 .236-.1.255-.232l.374-4.73c.01-.126-.09-.232-.22-.232zm3.328-4.323c-.31 0-.61.05-.89.15a3.49 3.49 0 0 0-2.02-1.46c-.14-.04-.26.06-.26.2v8.94c0 .12.1.22.22.22h6.14c1.93 0 3.5-1.57 3.5-3.5s-1.57-3.5-3.5-3.5c-.38 0-.74.06-1.07.18-.08-1.59-1.39-2.85-3.03-2.85z"/>
+                    </svg>
+                  </span>
                   <span class="setting-name">SoundCloud</span>
                 </div>
                 <button class="btn-pill-primary btn-open-link-import" id="btn-open-sc-import" data-platform="soundcloud" type="button">Import</button>
+              </div>
+            </div>
+
+            <div class="setting-item" id="card-apple-import">
+              <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                  <span style="width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: var(--md-sys-color-on-surface-variant);">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+                      <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
+                    </svg>
+                  </span>
+                  <span class="setting-name">Apple Music</span>
+                </div>
+                <button class="btn-pill-primary" id="btn-open-apple-import" type="button">Import</button>
               </div>
             </div>
             </div>
@@ -1197,16 +1237,6 @@
                   <div class="setting-item">
                     <div class="setting-item-top" style="align-items: center;">
                       <div style="display: flex; flex-direction: column; gap: 2px;">
-                        <span class="setting-name">Header banners</span>
-                        <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Show artwork backdrop banners in Now playing and playlists</span>
-                      </div>
-                      <button class="effect-switch-btn active" data-adv="banners"><span class="thumb"></span></button>
-                    </div>
-                  </div>
-
-                  <div class="setting-item">
-                    <div class="setting-item-top" style="align-items: center;">
-                      <div style="display: flex; flex-direction: column; gap: 2px;">
                         <span class="setting-name">My Wave recommendations</span>
                         <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Show personal recommendations on the home page</span>
                       </div>
@@ -1250,7 +1280,7 @@
                   </div>
                   <div style="display: flex; flex-direction: column;">
                     <span class="setting-name">Riff</span>
-                    <span id="about-version" style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Version 42.1.0</span>
+                    <span id="about-version" style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Version 42.2.0</span>
                   </div>
                 </div>
                 <button class="btn-pill-primary" id="btn-check-updates" style="padding: 6px 14px; font-size: calc(12px * var(--font-scale, 1));">Check for updates</button>
@@ -1273,7 +1303,7 @@
               </svg>
               Riff made by rootless, support me: <a href="https://t.me/riffplayer" target="_blank" rel="noopener">t.me/riffplayer</a>
             </span>
-            <span class="settings-version-tag">v42.1.0</span>
+            <span class="settings-version-tag">v42.2.0</span>
           </div>
             </div>
           </div>
@@ -1371,11 +1401,13 @@
         <button class="control-btn" id="btn-prev" title="Previous">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="19 20 9 12 19 4 19 20"></polygon><line x1="5" y1="19" x2="5" y2="5" stroke="currentColor" stroke-width="2.5"></line></svg>
         </button>
-        <button class="btn-play-pause" id="btn-play-pause" title="Play or pause">
-          <svg id="play-icon" width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><polygon points="8 5 19 12 8 19"></polygon></svg>
-          <svg id="pause-icon" class="hidden" width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"></rect><rect x="14" y="5" width="4" height="14" rx="1"></rect></svg>
-          <svg id="playbar-spinner" class="hidden m3-circular-progress" viewBox="0 0 48 48" style="width: 24px; height: 24px; position: absolute; margin: auto; inset: 0;"><circle class="m3-spinner-track" cx="24" cy="24" r="18" fill="none" stroke-width="4"></circle><circle class="m3-spinner-head" cx="24" cy="24" r="18" fill="none" stroke-width="4"></circle></svg>
-        </button>
+        <div class="play-pause-wrapper">
+          <button class="btn-play-pause" id="btn-play-pause" title="Play or pause">
+            <svg id="play-icon" width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><polygon points="8 5 19 12 8 19"></polygon></svg>
+            <svg id="pause-icon" width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"></rect><rect x="14" y="5" width="4" height="14" rx="1"></rect></svg>
+            <svg id="playbar-spinner" class="hidden m3-circular-progress" viewBox="0 0 48 48" style="width: 24px; height: 24px; position: absolute; margin: auto; inset: 0;"><circle class="m3-spinner-track" cx="24" cy="24" r="18" fill="none" stroke-width="4"></circle><circle class="m3-spinner-head" cx="24" cy="24" r="18" fill="none" stroke-width="4"></circle></svg>
+          </button>
+        </div>
         <button class="control-btn" id="btn-next" title="Next">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 4 15 12 5 20 5 4"></polygon><line x1="19" y1="5" x2="19" y2="19" stroke="currentColor" stroke-width="2.5"></line></svg>
         </button>
@@ -1653,11 +1685,26 @@
             <span class="eq-val" id="val-eq-high">0 dB</span>
           </div>
 
-          <div style="margin-top: 16px; border-top: 1px solid var(--md-sys-color-outline-variant); padding-top: 12px;">
-            <div style="display: flex; justify-content: flex-end; margin-bottom: 8px;">
+          <div class="eq-section-10band">
+            <div class="eq-section-header">
+              <span class="setting-name">10-band Equalizer</span>
               <button type="button" class="btn-outline-pill" id="btn-reset-eq-bands">Reset</button>
             </div>
-            <div class="eq-bands" id="eq-bands"></div>
+            <div class="eq-faders-container">
+              <div class="eq-scale">
+                <span>+12</span>
+                <span>0</span>
+                <span>-12</span>
+              </div>
+              <div class="eq-faders-area">
+                <div class="eq-grid-lines">
+                  <div class="eq-grid-line line-max"></div>
+                  <div class="eq-grid-line line-mid"></div>
+                  <div class="eq-grid-line line-min"></div>
+                </div>
+                <div class="eq-bands" id="eq-bands"></div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -1849,6 +1896,7 @@
           </span>
           <input type="text" id="spotify-import-url" class="pill-text-input" placeholder="URL" style="width: 100%; box-sizing: border-box; padding-left: 40px;">
         </div>
+        <div id="spotify-link-error" class="import-error-block hidden"></div>
         <div style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px;">
           <label class="dialog-label">Import into</label>
           <select class="pill-select" id="spotify-import-target" style="display:none">
@@ -1932,6 +1980,79 @@
     </div>
   </div>
 
+  <div class="modal-backdrop hidden" id="apple-import-modal">
+    <div class="dialog-card">
+      <h3>Import from Apple Music</h3>
+      <div class="sp-modes" id="apple-modes">
+        <button type="button" class="active" data-mode="link">Playlist link</button>
+        <button type="button" data-mode="file">Export files</button>
+      </div>
+      <div class="sp-pane" data-mode="link">
+        <div style="position: relative; width: 100%; margin-bottom: 12px;">
+          <span style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); display: flex; align-items: center; color: var(--md-sys-color-on-surface-variant); pointer-events: none;">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>
+          </span>
+          <input type="text" id="apple-import-url" class="pill-text-input" placeholder="Paste an Apple Music playlist link" style="width: 100%; box-sizing: border-box; padding-left: 40px;">
+        </div>
+        <div id="apple-link-error" class="import-error-block hidden"></div>
+        <div style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px;">
+          <label class="dialog-label">Import into</label>
+          <select class="pill-select" id="apple-import-target" style="display:none">
+            <option value="new">New playlist (Apple Music name)</option>
+          </select>
+          <div class="m3-dropdown" id="apple-target-dropdown">
+            <button class="m3-dropdown-trigger" id="apple-target-trigger" type="button">
+              <span id="apple-target-label">New playlist (Apple Music name)</span>
+              <svg class="m3-dropdown-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </button>
+            <div class="m3-dropdown-menu" id="apple-target-menu">
+              <button class="m3-dropdown-option selected" data-value="new" type="button">New playlist (Apple Music name)</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="sp-pane hidden" data-mode="file">
+        <div style="font-size: calc(13px * var(--font-scale, 1)); color: var(--md-sys-color-on-surface-variant); margin-bottom: 12px; line-height: 1.4;">Go to privacy.apple.com &gt; Request a copy of your data &gt; Apple Music activity, unzip the archive, then pick the playlist/library files here. No login needed.</div>
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
+          <button type="button" class="btn-outline-pill" id="btn-apple-pick-files">Choose files</button>
+          <input type="file" id="apple-file-input" accept=".csv,.json,text/csv,application/json" multiple style="display: none;">
+          <span id="apple-file-info" style="font-size: calc(13px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">No files selected</span>
+        </div>
+        <div id="apple-chk-container" class="hidden" style="display: flex; gap: 16px; margin-bottom: 12px;">
+          <label style="display: flex; align-items: center; gap: 8px; font-size: calc(13px * var(--font-scale, 1)); cursor: pointer;">
+            <input type="checkbox" id="apple-chk-likes" class="m3-checkbox" checked> Liked songs
+          </label>
+          <label style="display: flex; align-items: center; gap: 8px; font-size: calc(13px * var(--font-scale, 1)); cursor: pointer;">
+            <input type="checkbox" id="apple-chk-playlists" class="m3-checkbox" checked> Playlists
+          </label>
+        </div>
+        <div id="apple-file-summary" class="hidden" style="font-size: calc(13px * var(--font-scale, 1)); color: var(--md-sys-color-on-surface-variant); margin-bottom: 12px;"></div>
+        <div class="sp-warning">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+            <line x1="12" y1="9" x2="12" y2="13"></line>
+            <line x1="12" y1="17" x2="12.01" y2="17"></line>
+          </svg>
+          <span>We don't steal anything, and Riff is open-source. Want to import everything? Use the export files. Want zero risk? Import a single playlist by link instead.</span>
+        </div>
+      </div>
+      <div id="apple-import-progress-wrap" class="hidden" style="margin-bottom: 16px; display: flex; flex-direction: column; align-items: center; gap: 8px;">
+        <div id="apple-import-wavy-container" style="width: 100%;"></div>
+        <span id="apple-import-progress-label" style="font-size: calc(13px * var(--font-scale, 1)); color: var(--md-sys-color-on-surface-variant);">0 / 0</span>
+      </div>
+      <div id="apple-import-status" class="hidden" style="margin-bottom: 16px; font-size: calc(13px * var(--font-scale, 1));"></div>
+      <div class="dialog-actions">
+        <button class="btn-outline-pill" id="btn-cancel-apple-import" type="button">Cancel</button>
+        <button class="btn-pill-primary" id="btn-confirm-apple-import" type="button" style="display: flex; align-items: center; gap: 8px;">
+          <span id="apple-import-btn-icon" style="display: flex; align-items: center;">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+          </span>
+          <span id="apple-import-btn-text">Import from Apple Music</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-backdrop hidden" id="link-import-modal">
     <div class="dialog-card">
       <h3>Import from link</h3>
@@ -1941,6 +2062,7 @@
         </span>
         <input type="text" id="link-import-url" class="pill-text-input" placeholder="Paste a YouTube, YouTube Music or SoundCloud link" style="width: 100%; box-sizing: border-box; padding-left: 40px;">
       </div>
+      <div id="link-import-error" class="import-error-block hidden"></div>
       <div id="link-import-status" class="hidden" style="margin-bottom: 16px; font-size: calc(13px * var(--font-scale, 1));"></div>
       <div class="dialog-actions">
         <button class="btn-outline-pill" id="btn-cancel-link-import" type="button">Cancel</button>

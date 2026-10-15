@@ -1,8 +1,11 @@
 <p align="center">
-  <img src="banner.png" alt="Riff Banner" width="100%">
+  <img src="banner.png" alt="Riff - free desktop music player for YouTube Music and SoundCloud" width="100%">
 </p>
 
 <h1 align="center">Riff</h1>
+
+<p align="center"><b>A free, opensource desktop music player for YouTube Music and SoundCloud. No ads, no account and no telemetry </b></p>
+
 <p align="center">
   <a href="https://github.com/rootscripts/riff/commits/main">
     <img src="https://img.shields.io/github/last-commit/rootscripts/riff?style=for-the-badge&labelColor=16191C&color=94C9FF" alt="Last Commit">
@@ -22,205 +25,168 @@
 </p>
 
 <p align="center">
-  <b>Riff</b> is a free forever, best and freshly updating desktop music player for Windows, Linux, and macOS. It is made for playing music, managing a music library, and downloading tracks for offline listening.
+  <a href="https://github.com/rootscripts/riff/releases"><b>Download</b></a> ·
+  <a href="#features">Features</a> ·
+  <a href="#faq">FAQ</a> ·
+  <a href="#build-from-source">Build from source</a>
 </p>
+
+## What is Riff?
+
+Riff is a desktop music player for **Windows, Linux and macOS**. 
+It plays music from **YouTube Music**, **YouTube**, and **SoundCloud** without ads and without a Premium subscription, and it also works as a regular player for your local files (FLAC included).
+
+You don't need to log in or create an account, and Riff doesn't collect telemetry. Install it and press play.
+
+It's built with Electron and Material 3 Expressive UI.
 
 ## Features
 
-### Music downloads
+- No ads streaming for YouTube Music, YouTube and SoundCloud
+- Plays local audio (FLAC, MP3, WAV, OGG and more)
+- Easy audio controls with a built-in equalizer, speed changer, tempo and pitch & distortion & reverb sliders
+- Spotify, YT, YT Music, Apple Music, SoundCloud public playlist import in 1 click
+- UI customization with dynamic colors, profile banners, and a custom CSS editor for own themes
+- Discord Rich Presence integration
+- No telemetry and completely open source under MIT license
 
-Riff can download audio from:
+### Streaming
+- Play YouTube Music, YouTube and SoundCloud with no ads
+- Very fast track loading
 
-* YouTube
-* YT Music
-* SoundCloud
+### Audio controls
+- Quick presets and a 10-band equalizer
+- Change tempo (speed up or slow down) in real time
+- Add reverb or distortion
+- Local FLAC support
 
-Downloaded tracks can be added to the local library and played without an internet connection
-
-# Android & iOS
-Android & iOS Riff forks are unofficial and are not made by rootless.
-All Riff Android & iOS FORKS:
-### Muriel
-https://github.com/cloverscripts/riff-muriel/tags
-Muriel (Riff Android & iOS & Windows) by cloverscripts
-### Other phone apps coming soon
-
-# macOS warning
-
-macOS support is still in beta and some functions may not work.
-
-! When you install the .dmg, you'll get this error:
-
-<p align="left">
-  <img src="readmeerror.png" alt="macos" width="30%">
-</p>
-
-To fix it, write this command in the terminal
-
-`xattr -d -r com.apple.quarantine /Applications/Riff.dmg`
-
-(replace Riff.dmg with actual dmg name)
-
-Then run the app again.
+### Downloads
+Riff can download audio from YouTube, YT Music and SoundCloud. Downloaded tracks go into your local library and play without an internet connection.
 
 ### Local music library
-
-Your music files stay on your computer.
-
-Riff can read track information such as:
-
-* Title
-* Artist
-* Album
-* Track number
-* Album art
-* Other common audio tags
-
-You can also organize music into folders and playlists.
+Your files stay on your computer. Riff reads title, artist, album, track number, album art and other common tags. You can organize music into folders and playlists, and adding or removing tracks from a playlist never touches the original files.
 
 ### Audio editor
-
-Riff has a small built-in editor for making simple changes to a track.
-
-You can:
-
-* Speed up/slow down tracks realtime
-* Add reverb, distortion, make the track sound high quality by equalizing
-* Trim the beginning or end of a track
-* Select a part of a song
-* Save a selected section as a separate file
-
-It is meant for quick edits, so you do not need to open another program for small changes.
+A small built-in editor for quick fixes, so you don't have to open another program:
+- Trim the start or end of a track
+- Select part of a song and save it as a separate file
+- Change speed, add reverb or distortion, and equalize
 
 ### Lyrics
-
-Lyrics are enabled with online search by default.
-
-Riff supports:
-
-* Plain text lyrics
-* LRC files
-* Manual lyric timing
-* Online auto lyric timing
-
-LRC files can be used when you already have timestamps. You can also adjust the timing yourself from inside the player.
+Online lyric search is on by default. Riff supports plain text lyrics, LRC files, manual timing, and automatic online timing. If you already have timestamps, use an LRC file. If not, adjust the timing yourself from inside the player.
 
 ### Discord Rich Presence
+Show what you're listening to on Discord: track name, artist and progress.
 
-Riff can show what you are listening to on Discord.
-
-The Rich Presence can include:
-
-* Track name
-* Artist
-* track progress
-
-### Playlists
-
-You can create and manage playlists from your local music library.
-
-Tracks can be added or removed without changing the original files.
+### Customization
+Dynamic Material 3 colors, custom banners and a built-in CSS editor.
 
 ### Background playback
+Music keeps playing when Riff is minimized or in the background.
 
-Music continues playing while Riff is in the background or minimized.
+## Download and install
 
-### Offline use
+Grab the latest build from the [Releases page](https://github.com/rootscripts/riff/releases).
 
-Riff does not require an account to play local music.
+Releases already include everything Riff needs (yt-dlp and ffmpeg are bundled), so there's nothing extra to install on Windows or Linux.
 
-Your local library, playlists, downloaded files, and other music data can stay on your computer.
+### macOS
 
-Riff does not need a subscription or paid Premium.
+macOS support is **experimental**. It's built in CI and not tested on every Mac, so some things may not work.
 
-## Memory usage
+1. Download the right file:
+   - `Riff-<version>-mac-arm64.dmg` for Apple Silicon (M1 and newer)
+   - `Riff-<version>-mac-x64.dmg` for Intel
+2. Open the dmg and drag Riff into Applications.
+3. The app isn't signed. Right-click Riff in Applications, choose **Open**, and confirm.
+4. If macOS says the app is "damaged", run this in Terminal and open the app again:
+   ```bash
+   xattr -cr /Applications/Riff.app
+   ```
+   If you get a quarantine error when opening the dmg itself, run this instead (use your real dmg name):
+   ```bash
+   xattr -d -r com.apple.quarantine /path/to/Riff.dmg
+   ```
+5. Install the tools with Homebrew (Riff finds Homebrew installs automatically):
+   ```bash
+   brew install yt-dlp ffmpeg
+   ```
 
-Riff is designed to stay relatively light, comfortable and fast for a desktop music player.
+Notes for macOS: there are no automatic updates (download the new dmg from Releases), and your data lives in `~/Library/Application Support/Riff`.
 
-On a typical system, it uses around **~200 MB of RAM**, although actual usage depends on the number of tracks loaded, the current features being used, and the system itself.
+## Build from source
 
-## Requirements
-
-* Node.js 18 or newer
-* npm
-* yt-dlp, ffmpeg
-
-! ALL OF THESE ARE INSTALLED BY DEFAULT AND COMPILED IN RELEASES !
-
-## Getting started
-
-Clone the repository:
+You need Node.js 18 or newer and npm. yt-dlp and ffmpeg are installed by default in dev and compiled into releases.
 
 ```bash
 git clone https://github.com/rootscripts/riff.git
 cd riff
-```
-
-Install the dependencies:
-
-```bash
 npm install
-```
-
-Start the development version:
-
-```bash
-npm run dev
-```
-
-## Building
-
-To create a production build, use:
-
-```bash
-npm run build
+npm start        # run the dev version
+npm run dist     # make a production build
 ```
 
 The exact build output depends on the current project configuration.
 
-## macOS
+## Memory usage
 
-Support for macOS is experimental (built in CI, not tested on every Mac).
+Riff (1 electron proccess) uses roughly **180 MB of RAM** on a typical system. Real usage depends on how many tracks are loaded, which features you're using, and your machine. 
+### We only treat RAM leak as a bug when it gets really high (600+ MB).
 
-### Download
+## Mobile versions
 
-* `Riff-<version>-mac-arm64.dmg` for Apple Silicon (M1 and newer)
-* `Riff-<version>-mac-x64.dmg` for Intel
+There is no official Riff for Android or iOS. The forks below are unofficial and not made by rootless.
+### https://rootless.shit.vc/fork
+More phone apps may come later.
 
-Open the dmg, drag Riff to Applications.
+## FAQ
 
-### First launch
+**Is Riff free?**
+Yes. Riff is free and open source under the MIT license. There's no subscription or Premium tier.
 
-The app is not signed. Right-click Riff in Applications, choose Open, and confirm. If macOS says the app is "damaged": run `xattr -cr /Applications/Riff.app` in Terminal and open it again.
+**Does Riff have ads?**
+No. YouTube Music and SoundCloud playback is ad-free.
 
-### Tools
+**Do I need an account to use Riff?**
+No. No login, no account, no telemetry.
 
-Run `brew install yt-dlp ffmpeg` (Riff finds Homebrew installs automatically).
+**Which platforms does Riff support?**
+Windows, Linux and macOS. macOS is in beta.
 
-### Notes
+**Can Riff play local files?**
+Yes, including FLAC. It reads tags and album art, and you can build playlists without modifying the original files.
 
-* No automatic updates on macOS (download the new dmg from Releases).
-* Data is stored in `~/Library/Application Support/Riff`.
+**Can I use Riff offline?**
+Yes. Downloaded tracks and your local library play without internet.
 
-### Build from source
+**Can I import my Spotify playlists?**
+Public Spotify playlists, yes, including ones with more than 100 tracks.
 
-```bash
-npm install
-npm run dist
-```
-### Contribution
+**Does Riff support synced lyrics?**
+Yes: plain text, LRC files, manual timing and automatic online timing.
 
-Please run tests for your PR if it works first, if it looks good, and search any bugs possible.
+**Does Riff work with Discord?**
+Yes. Rich Presence shows the track, artist and progress.
 
-If it contains bugs/several critical issues/crashes and not tested, please do not post a PR as it's useless
+**Is there a Riff app for Android or iOS?**
+Not an official one. See [Mobile versions](#mobile-versions) for community forks.
 
-## Notes
+## Contributing
 
-Developed for educational and personal media management purposes only. Users are responsible for complying with local copyright laws and the terms of service of any third-party streaming platforms.
+Pull requests are welcome. Please run the app and test your changes first, and look for bugs before you open the PR. A PR with untested code, crashes or critical issues just costs everyone time, so please don't post one in that state.
 
-Riff is primarily intended for personal use with music you are allowed to download and store.
+## Support
 
-When downloading content from third-party services, make sure your use of that content follows the service's rules and the laws that apply to you.
+If Riff is useful to you, you can support development on [Ko-fi](https://ko-fi.com/rootlesszen). Starring the repo helps too.
+
+## Disclaimer
+
+Riff is made for educational and personal media management. It's meant for music you're allowed to download and store. When you download from third-party services, you're responsible for following their terms of service and the laws that apply to you.
 
 ## License
-MIT
+
+[MIT](LICENSE)
+
+---
+
+<sub>Keywords: free music player, YouTube Music desktop app, SoundCloud desktop player, ad-free music player, YouTube Music client for Windows Linux macOS, open source music player, Spotify playlist import, music player with equalizer, FLAC player, Discord Rich Presence music player, Electron music player.</sub>
